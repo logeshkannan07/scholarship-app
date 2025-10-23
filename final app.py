@@ -17,7 +17,7 @@ import seaborn as sns
 # ---------------------------------------------------------
 # 🏫 Page Config & Logo
 # ---------------------------------------------------------
-st.image("anna_logo.png", width=150)
+st.image("anna-university-logo.png", width=150)
 st.set_page_config(page_title="Scholarship App", page_icon="🎓", layout="centered")
 st.image("https://upload.wikimedia.org/wikipedia/en/7/7a/Anna_University_Logo.png", width=120)
 st.title("🎓 Anna University Scholarship App")
@@ -170,4 +170,5 @@ with tab2:
             r2 = r2_score(y_test,y_pred)
             res.append({"Model":name,"RMSE":round(rmse,2),"R²":round(r2,2)})
         st.table(pd.DataFrame(res))
+
 
