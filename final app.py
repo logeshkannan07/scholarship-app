@@ -1,5 +1,5 @@
 # =========================================================
-# 🎓 Combined Scholarship App | Anna University
+# 🎓 Anna University Scholarship App (Enhanced GUI)
 # =========================================================
 
 import joblib
@@ -15,12 +15,34 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # ---------------------------------------------------------
-# 🏫 Page Config & Logo
+# 🏫 Page Config & Background Color
 # ---------------------------------------------------------
-st.image("anna-university-logo.png", width=150)
 st.set_page_config(page_title="Scholarship App", page_icon="🎓", layout="centered")
-st.image("https://upload.wikimedia.org/wikipedia/en/7/7a/Anna_University_Logo.png", width=120)
+
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background-color: #ffffff;  /* Main white background */
+    }
+    .card {
+        background-color: #d1e7dd;  /* Light green card */
+        padding: 15px;
+        border-radius: 10px;
+        margin-bottom: 10px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ---------------------------------------------------------
+# 🖼️ Header
+# ---------------------------------------------------------
+st.image("anna_logo.png", width=150)
 st.title("🎓 Anna University Scholarship App")
+st.markdown("#### Eligibility Finder & Scholarship Reach Predictor")
+st.markdown("---")
 
 # ---------------------------------------------------------
 # 🔖 Tabs
@@ -31,8 +53,6 @@ tab1, tab2 = st.tabs(["🏆 Scholarship Eligibility Finder", "📊 Scholarship R
 # TAB 1: Scholarship Eligibility Finder
 # =========================================================
 with tab1:
-    st.markdown("#### Anna University Regional Campus, Madurai")
-    
     @st.cache_data
     def load_scholarship_data():
         df = pd.read_csv("Curated_Scholarships_India_TN_200.csv")
@@ -100,23 +120,17 @@ with tab2:
         return df
 
     df_reach = load_reach_data()
-    
     feature_cols = ["avg_family_income","literacy_rate","female_ratio","rural_population_percent",
                     "num_students","schools_with_computer_lab_percent","schools_with_internet_percent",
                     "school_infrastructure_index","income_to_infra","awareness_index"]
-    X = df_reach[feature_cols]
-    y = df_reach["scholarship_reach_percent"]
 
-    scaler = joblib.load("scaler.pkl") if st.button("Load Existing Scaler") else StandardScaler().fit(X)
-    
-    # Train or load models
-    model_files = ["Linear_Regression_model.pkl", "Random_Forest_model.pkl", "Gradient_Boosting_model.pkl"]
-    trained_models = {}
-    for file in model_files:
-        try:
-            trained_models[file.replace("_model.pkl","").replace("_"," ")] = joblib.load(file)
-        except:
-            st.warning(f"Model file {file} not found. Train models first.")
+    # Load scaler and models
+    scaler = joblib.load("scaler.pkl")
+    trained_models = {
+        "Linear Regression": joblib.load("Linear_Regression_model.pkl"),
+        "Random Forest": joblib.load("Random_Forest_model.pkl"),
+        "Gradient Boosting": joblib.load("Gradient_Boosting_model.pkl")
+    }
 
     # Dummy areas
     dummy_areas = {
@@ -125,6 +139,7 @@ with tab2:
         "Coimbatore": ["RS Puram", "Peelamedu", "Gandhipuram"]
     }
 
+    # Top selectors
     model_choice = st.selectbox("Choose Model", list(trained_models.keys()))
     district = st.selectbox("Select District", df_reach["district"].unique())
     area = st.selectbox("Select Area / City", dummy_areas.get(district, ["Area 1", "Area 2"]))
@@ -132,14 +147,18 @@ with tab2:
 
     district_data = df_reach[df_reach["district"]==district].iloc[0]
 
-    avg_income = st.number_input("Average Family Income", value=float(district_data["avg_family_income"]))
-    literacy_rate = st.slider("Literacy Rate (%)", 0.0, 100.0, float(district_data["literacy_rate"]))
-    female_ratio = st.slider("Female Ratio", 800.0, 1100.0, float(district_data["female_ratio"]))
-    rural_percent = st.slider("Rural Population (%)", 0.0, 100.0, float(district_data["rural_population_percent"]))
-    num_students = st.number_input("Number of Students", value=int(district_data["num_students"]))
-    comp_lab_percent = st.slider("Schools with Computer Lab (%)", 0.0, 100.0, float(district_data["schools_with_computer_lab_percent"]))
-    internet_percent = st.slider("Schools with Internet (%)", 0.0, 100.0, float(district_data["schools_with_internet_percent"]))
-    infra_index = st.slider("School Infrastructure Index", 0.0, 100.0, float(district_data["school_infrastructure_index"]))
+    # Two-column inputs
+    col1, col2 = st.columns(2)
+    with col1:
+        avg_income = st.number_input("Average Family Income", value=float(district_data["avg_family_income"]))
+        literacy_rate = st.slider("Literacy Rate (%)", 0.0, 100.0, float(district_data["literacy_rate"]))
+        female_ratio = st.slider("Female Ratio", 800.0, 1100.0, float(district_data["female_ratio"]))
+        rural_percent = st.slider("Rural Population (%)", 0.0, 100.0, float(district_data["rural_population_percent"]))
+    with col2:
+        num_students = st.number_input("Number of Students", value=int(district_data["num_students"]))
+        comp_lab_percent = st.slider("Schools with Computer Lab (%)", 0.0, 100.0, float(district_data["schools_with_computer_lab_percent"]))
+        internet_percent = st.slider("Schools with Internet (%)", 0.0, 100.0, float(district_data["schools_with_internet_percent"]))
+        infra_index = st.slider("School Infrastructure Index", 0.0, 100.0, float(district_data["school_infrastructure_index"]))
 
     income_to_infra = avg_income / (infra_index if infra_index!=0 else 1)
     awareness_index = (literacy_rate * internet_percent)/100
@@ -152,23 +171,42 @@ with tab2:
         model = trained_models[model_choice]
         pred = model.predict(features_scaled)[0]
         pred = float(np.clip(pred,0,100))
-        st.success(f"🏆 Predicted Scholarship Reach: {pred:.2f}%")
+        # Display prediction in a colored card
+        st.markdown(f"""
+        <div class="card">
+        <h3>🏆 Predicted Scholarship Reach: {pred:.2f}%</h3>
+        </div>
+        """, unsafe_allow_html=True)
 
-    if st.checkbox("Show Correlation Heatmap"):
+    # Optional expanders
+    with st.expander("Show Correlation Heatmap"):
         corr = df_reach[feature_cols + ["scholarship_reach_percent"]].corr()
         fig, ax = plt.subplots(figsize=(9,7))
         sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
         st.pyplot(fig)
 
-    if st.checkbox("Show Model Performance"):
+    with st.expander("Show Model Performance"):
         res=[]
-        X_scaled = scaler.transform(X)
-        X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+        X_scaled = scaler.transform(df_reach[feature_cols])
+        X_train, X_test, y_train, y_test = train_test_split(X_scaled, df_reach["scholarship_reach_percent"], test_size=0.2, random_state=42)
         for name, m in trained_models.items():
             y_pred = m.predict(X_test)
             rmse = np.sqrt(mean_squared_error(y_test,y_pred))
             r2 = r2_score(y_test,y_pred)
             res.append({"Model":name,"RMSE":round(rmse,2),"R²":round(r2,2)})
         st.table(pd.DataFrame(res))
+
+# ---------------------------------------------------------
+# Footer
+# ---------------------------------------------------------
+st.markdown("---")
+st.markdown(
+    """
+    **Developed by:** Logesh Kannan  
+    **Under Guidance:** Faculty, Anna University Regional Campus Madurai  
+    **Purpose:** Improve accessibility & awareness of scholarship opportunities.
+    """
+)
+
 
 
