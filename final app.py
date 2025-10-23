@@ -39,7 +39,7 @@ st.markdown(
 # ---------------------------------------------------------
 # 🖼️ Header
 # ---------------------------------------------------------
-st.image("anna_logo.png", width=150)
+st.image("anna-university-logo.png", width=150)
 st.title("🎓 Anna University Scholarship App")
 st.markdown("#### Eligibility Finder & Scholarship Reach Predictor")
 st.markdown("---")
@@ -207,6 +207,7 @@ st.markdown(
     **Purpose:** Improve accessibility & awareness of scholarship opportunities.
     """
 )
+
 
 
 
