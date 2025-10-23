@@ -23,7 +23,7 @@ st.markdown(
     """
     <style>
     .stApp {
-        background-color: #ffffff;  /* Main white background */
+        background-color: #132257;  /* Main white background */
     }
     .card {
         background-color: #d1e7dd;  /* Light green card */
@@ -40,7 +40,7 @@ st.markdown(
 # 🖼️ Header
 # ---------------------------------------------------------
 st.image("anna-university-logo.png", width=150)
-st.title("🎓 Anna University Scholarship App")
+st.title("🎓 Anna University-Scholarship App")
 st.markdown("#### Eligibility Finder & Scholarship Reach Predictor")
 st.markdown("---")
 
@@ -202,11 +202,12 @@ with tab2:
 st.markdown("---")
 st.markdown(
     """
-    **Developed by:** Logesh Kannan  
+    **Developed by:** Logesh Kannan S
     **Under Guidance:** Faculty, Anna University Regional Campus Madurai  
     **Purpose:** Improve accessibility & awareness of scholarship opportunities.
     """
 )
+
 
 
 
