@@ -23,7 +23,7 @@ st.markdown(
     """
     <style>
     .stApp {
-        background-color: #132257;  /* Main white background */
+        background-color: #ffffff;  /* Main white background */
     }
     .card {
         background-color: #d1e7dd;  /* Light green card */
@@ -207,6 +207,7 @@ st.markdown(
     **Purpose:** Improve accessibility & awareness of scholarship opportunities.
     """
 )
+
 
 
 
