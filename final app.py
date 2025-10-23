@@ -203,10 +203,12 @@ st.markdown("---")
 st.markdown(
     """
     **Developed by:** Logesh Kannan S
+    
     **Under Guidance:** Faculty, Anna University Regional Campus Madurai  
     **Purpose:** Improve accessibility & awareness of scholarship opportunities.
     """
 )
+
 
 
 
