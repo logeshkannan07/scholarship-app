@@ -1,35 +1,31 @@
 # =========================================================
-# 🎓 Anna University Scholarship App (Enhanced GUI)
+# 🎓 Anna University Scholarship App (Full Version)
 # =========================================================
 
-import joblib
 import streamlit as st
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
-from sklearn.metrics import mean_squared_error, r2_score
+import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error, r2_score
 
 # ---------------------------------------------------------
-# 🏫 Page Config & Background Color
+# 🏫 Page Configuration
 # ---------------------------------------------------------
-st.set_page_config(page_title="Scholarship App", page_icon="🎓", layout="centered")
+st.set_page_config(page_title="Anna University Scholarship App", page_icon="🎓", layout="wide")
 
 st.markdown(
     """
     <style>
-    .stApp {
-        background-color: #ffffff;  /* Main white background */
-    }
+    .stApp { background-color: #ffffff; }
     .card {
-        background-color: #d1e7dd;  /* Light green card */
+        background-color: #eaf8f1;
         padding: 15px;
         border-radius: 10px;
         margin-bottom: 10px;
+        box-shadow: 2px 2px 6px rgba(0,0,0,0.1);
     }
     </style>
     """,
@@ -39,221 +35,188 @@ st.markdown(
 # ---------------------------------------------------------
 # 🖼️ Header
 # ---------------------------------------------------------
-st.image("anna-university-logo.png", width=150)
-st.title("🎓 Anna University-Scholarship App")
-st.markdown("#### Eligibility Finder & Scholarship Reach Predictor")
+st.title("🎓 Anna University Scholarship App")
+st.markdown("#### Eligibility Finder | Reach Predictor | Scholarship Dashboard")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# 🔖 Tabs
+# Tabs
 # ---------------------------------------------------------
 tab1, tab2, tab3 = st.tabs([
-    "🏆 Scholarship Eligibility Finder", 
+    "🏆 Scholarship Eligibility Finder",
     "📊 Scholarship Reach Predictor",
-    "📈 Data Dashboard"
+    "📈 Scholarship Dashboard"
 ])
 
-
 # =========================================================
-# TAB 1: Scholarship Eligibility Finder
+# TAB 1 — Eligibility Finder
 # =========================================================
 with tab1:
+    st.subheader("Find Scholarships You Are Eligible For")
+
     @st.cache_data
     def load_scholarship_data():
         df = pd.read_csv("Curated_Scholarships_India_TN_200.csv")
         df.columns = df.columns.str.strip()
         return df
 
-    df_scholarship = load_scholarship_data()
-    st.success(f"✅ Loaded {len(df_scholarship)} scholarships successfully!")
+    df_sch = load_scholarship_data()
+    st.success(f"✅ {len(df_sch)} Scholarships Loaded Successfully!")
 
-    # Normalization maps
-    gender_map = {"male": "Male", "female": "Female", "other": "Other"}
-    category_map = {"sc": "SC", "st": "ST", "obc": "OBC", "gen": "General", "minority": "Minority"}
-    edu_map = {"school": "School", "ug": "UG", "pg": "PG", "phd": "PhD"}
-
-    st.subheader("🧾 Enter Your Details")
-    col1, col2 = st.columns(2)
-    with col1:
-        gender_in = st.selectbox("Gender", ["Male", "Female", "Other"])
-        income = st.number_input("Annual Family Income (₹)", min_value=0, value=150000)
-    with col2:
-        category_in = st.selectbox("Community / Category", ["SC", "ST", "OBC", "General", "Minority"])
-        education_in = st.selectbox("Education Level", ["School", "UG", "PG", "PhD"])
+    gender = st.selectbox("Gender", ["Male", "Female", "Other"])
+    category = st.selectbox("Community / Category", ["SC", "ST", "OBC", "General", "Minority"])
+    income = st.number_input("Annual Family Income (₹)", min_value=0, value=200000)
+    edu_level = st.selectbox("Education Level", ["School", "UG", "PG", "PhD"])
 
     if st.button("🔍 Find Eligible Scholarships"):
-        gender = gender_map.get(gender_in.lower(), "All")
-        category = category_map.get(category_in.lower(), "All")
-        education = edu_map.get(education_in.lower(), "All")
-
-        def eligible(row):
+        def check_eligibility(row):
+            try:
+                limit = float(str(row["Income Limit"]).replace(",", "").strip())
+            except:
+                limit = 99999999
+            if income > limit:
+                return False
             if row["Gender"] != "All" and row["Gender"].lower() != gender.lower():
                 return False
             if row["Category"] != "All" and row["Category"].upper() != category.upper():
                 return False
-            try:
-                limit = float(str(row["Income_Limit"]).replace(",", "").strip())
-                if income > limit:
-                    return False
-            except:
-                pass
-            if row["Eligible_Classes"] != "All" and education.lower() not in row["Eligible_Classes"].lower():
+            if row["Education Level"] != "All" and edu_level.lower() not in row["Education Level"].lower():
                 return False
             return True
 
-        result_df = df_scholarship[df_scholarship.apply(eligible, axis=1)]
+        eligible_df = df_sch[df_sch.apply(check_eligibility, axis=1)]
 
-        if not result_df.empty:
-            st.success(f"🎉 Found {len(result_df)} scholarships matching your profile!")
-            st.dataframe(result_df[["Scholarship_Name", "Provider", "Amount", "Application_Link", "Last_Date"]], use_container_width=True)
-            csv = result_df.to_csv(index=False).encode("utf-8")
-            st.download_button("📥 Download Eligible Scholarships as CSV", data=csv, file_name="Eligible_Scholarships.csv", mime="text/csv")
+        if not eligible_df.empty:
+            st.success(f"🎉 {len(eligible_df)} Scholarships Found Matching Your Profile")
+            st.dataframe(eligible_df[["Scholarship Name", "Category", "Gender", "Education Level", "Amount", "Website"]])
+            csv = eligible_df.to_csv(index=False).encode("utf-8")
+            st.download_button("📥 Download Eligible Scholarships", csv, "Eligible_Scholarships.csv", "text/csv")
+            st.session_state["eligible_df"] = eligible_df
         else:
-            st.warning("😔 No scholarships matched your details. Try adjusting inputs.")
+            st.warning("😔 No scholarships match your profile. Try adjusting your filters.")
 
 # =========================================================
-# TAB 2: Scholarship Reach Predictor
+# TAB 2 — Scholarship Reach Predictor
 # =========================================================
 with tab2:
-    st.subheader("Predict Scholarship Reach in TN Districts")
+    st.subheader("Predict Scholarship Reach by District")
 
     @st.cache_data
     def load_reach_data():
         df = pd.read_csv("TN_Scholarship_Reach_REALISTIC.csv")
-        df["income_to_infra"] = df["avg_family_income"] / df["school_infrastructure_index"].replace(0,1)
+        df["income_to_infra"] = df["avg_family_income"] / df["school_infrastructure_index"].replace(0, 1)
         df["awareness_index"] = (df["literacy_rate"] * df["schools_with_internet_percent"]) / 100
         return df
 
     df_reach = load_reach_data()
-    feature_cols = ["avg_family_income","literacy_rate","female_ratio","rural_population_percent",
-                    "num_students","schools_with_computer_lab_percent","schools_with_internet_percent",
-                    "school_infrastructure_index","income_to_infra","awareness_index"]
 
-    # Load scaler and models
     scaler = joblib.load("scaler.pkl")
-    trained_models = {
+    models = {
         "Linear Regression": joblib.load("Linear_Regression_model.pkl"),
         "Random Forest": joblib.load("Random_Forest_model.pkl"),
         "Gradient Boosting": joblib.load("Gradient_Boosting_model.pkl")
     }
 
-    # Dummy areas
-    dummy_areas = {
-        "Chennai": ["Adyar", "T. Nagar", "Velachery"],
-        "Madurai": ["Simmakkal", "Alanganallur", "Thiruparankundram"],
-        "Coimbatore": ["RS Puram", "Peelamedu", "Gandhipuram"]
-    }
-
-    # Top selectors
-    model_choice = st.selectbox("Choose Model", list(trained_models.keys()))
     district = st.selectbox("Select District", df_reach["district"].unique())
-    area = st.selectbox("Select Area / City", dummy_areas.get(district, ["Area 1", "Area 2"]))
-    st.write(f"Selected Area: **{area}, {district}**")
+    model_choice = st.selectbox("Select Model", list(models.keys()))
 
-    district_data = df_reach[df_reach["district"]==district].iloc[0]
+    dist_row = df_reach[df_reach["district"] == district].iloc[0]
+    features = [
+        "avg_family_income", "literacy_rate", "female_ratio", "rural_population_percent",
+        "num_students", "schools_with_computer_lab_percent", "schools_with_internet_percent",
+        "school_infrastructure_index"
+    ]
 
-    # Two-column inputs
-    col1, col2 = st.columns(2)
-    with col1:
-        avg_income = st.number_input("Average Family Income", value=float(district_data["avg_family_income"]))
-        literacy_rate = st.slider("Literacy Rate (%)", 0.0, 100.0, float(district_data["literacy_rate"]))
-        female_ratio = st.slider("Female Ratio", 800.0, 1100.0, float(district_data["female_ratio"]))
-        rural_percent = st.slider("Rural Population (%)", 0.0, 100.0, float(district_data["rural_population_percent"]))
-    with col2:
-        num_students = st.number_input("Number of Students", value=int(district_data["num_students"]))
-        comp_lab_percent = st.slider("Schools with Computer Lab (%)", 0.0, 100.0, float(district_data["schools_with_computer_lab_percent"]))
-        internet_percent = st.slider("Schools with Internet (%)", 0.0, 100.0, float(district_data["schools_with_internet_percent"]))
-        infra_index = st.slider("School Infrastructure Index", 0.0, 100.0, float(district_data["school_infrastructure_index"]))
+    inputs = []
+    for f in features:
+        val = st.number_input(f"{f.replace('_', ' ').title()}", value=float(dist_row[f]))
+        inputs.append(val)
 
-    income_to_infra = avg_income / (infra_index if infra_index!=0 else 1)
-    awareness_index = (literacy_rate * internet_percent)/100
+    income_to_infra = inputs[0] / (inputs[-1] if inputs[-1] != 0 else 1)
+    awareness_index = (inputs[1] * inputs[6]) / 100
+    X = np.array([inputs + [income_to_infra, awareness_index]])
+    X_scaled = scaler.transform(X)
 
-    if st.button("Predict Scholarship Reach"):
-        features_array = np.array([[avg_income, literacy_rate, female_ratio, rural_percent,
-                                    num_students, comp_lab_percent, internet_percent, infra_index,
-                                    income_to_infra, awareness_index]])
-        features_scaled = scaler.transform(features_array)
-        model = trained_models[model_choice]
-        pred = model.predict(features_scaled)[0]
-        pred = float(np.clip(pred,0,100))
-        # Display prediction in a colored card
-        st.markdown(f"""
-        <div class="card">
-        <h3>🏆 Predicted Scholarship Reach: {pred:.2f}%</h3>
-        </div>
-        """, unsafe_allow_html=True)
+    if st.button("🚀 Predict Scholarship Reach"):
+        pred = models[model_choice].predict(X_scaled)[0]
+        st.markdown(f"<div class='card'><h3>🎯 Predicted Scholarship Reach: {pred:.2f}%</h3></div>", unsafe_allow_html=True)
 
-    # Optional expanders
-    with st.expander("Show Correlation Heatmap"):
-        corr = df_reach[feature_cols + ["scholarship_reach_percent"]].corr()
-        fig, ax = plt.subplots(figsize=(9,7))
-        sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
-        st.pyplot(fig)
-
-    with st.expander("Show Model Performance"):
-        res=[]
-        X_scaled = scaler.transform(df_reach[feature_cols])
-        X_train, X_test, y_train, y_test = train_test_split(X_scaled, df_reach["scholarship_reach_percent"], test_size=0.2, random_state=42)
-        for name, m in trained_models.items():
-            y_pred = m.predict(X_test)
-            rmse = np.sqrt(mean_squared_error(y_test,y_pred))
-            r2 = r2_score(y_test,y_pred)
-            res.append({"Model":name,"RMSE":round(rmse,2),"R²":round(r2,2)})
-        st.table(pd.DataFrame(res))
-    # =========================================================
-# TAB 3: Dashboard
+# =========================================================
+# TAB 3 — Dashboard (Advanced)
 # =========================================================
 with tab3:
-    st.header("📈 Scholarship Data Dashboard")
+    st.subheader("📈 Scholarship Dashboard & Visualization")
 
-    try:
-        df_dash = pd.read_csv("Curated_Scholarships_India_TN_200.csv")
-        st.success("✅ Dataset loaded successfully!")
-    except FileNotFoundError:
-        st.error("❌ Could not find the dataset file.")
-        st.stop()
+    df_dash = st.session_state.get("eligible_df", load_scholarship_data())
 
-    st.subheader("🔍 Dataset Overview")
-    st.dataframe(df_dash, use_container_width=True)
-    st.write(f"**Rows:** {df_dash.shape[0]}, **Columns:** {df_dash.shape[1]}")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("🏛️ Tamil Nadu Scholarships", len(df_dash[df_dash["Level"].str.contains("State", case=False, na=False)]))
+    with col2:
+        st.metric("🇮🇳 Central Scholarships", len(df_dash[df_dash["Level"].str.contains("Central", case=False, na=False)]))
+    with col3:
+        st.metric("📊 Total Scholarships", len(df_dash))
 
-    # Select column for visualization
+    st.markdown("---")
+    search = st.text_input("🔍 Search by Scholarship Name", "")
+    cat = st.multiselect("🎯 Filter by Category", sorted(df_dash["Category"].dropna().unique()))
+    gender = st.multiselect("🚻 Filter by Gender", sorted(df_dash["Gender"].dropna().unique()))
+    edu = st.multiselect("🎓 Filter by Education Level", sorted(df_dash["Education Level"].dropna().unique()))
+
+    filtered = df_dash.copy()
+    if search:
+        filtered = filtered[filtered["Scholarship Name"].str.contains(search, case=False, na=False)]
+    if cat:
+        filtered = filtered[filtered["Category"].isin(cat)]
+    if gender:
+        filtered = filtered[filtered["Gender"].isin(gender)]
+    if edu:
+        filtered = filtered[filtered["Education Level"].isin(edu)]
+
+    st.write(f"### 🧾 {len(filtered)} Scholarships Found")
+
+    # Tamil Nadu & Central split
+    tn_df = filtered[filtered["Level"].str.contains("State", case=False, na=False)]
+    central_df = filtered[filtered["Level"].str.contains("Central", case=False, na=False)]
+
+    def show_cards(sub_df, title, bg):
+        if not sub_df.empty:
+            st.subheader(title)
+            for _, r in sub_df.iterrows():
+                st.markdown(
+                    f"""
+                    <div style='background-color:{bg};padding:15px;border-radius:12px;
+                    margin-bottom:12px;box-shadow:2px 2px 10px rgba(0,0,0,0.1);'>
+                      <h4 style='color:#0d6efd;'>{r["Scholarship Name"]}</h4>
+                      <p><b>Category:</b> {r["Category"]} | <b>Gender:</b> {r["Gender"]}
+                      | <b>Education:</b> {r["Education Level"]} <br>
+                      <b>Income Limit:</b> ₹{r["Income Limit"]} | <b>Amount:</b> {r["Amount"]}</p>
+                      <a href='{r["Website"]}' target='_blank'>
+                        <button style='background-color:#4CAF50;color:white;padding:6px 14px;
+                        border:none;border-radius:8px;cursor:pointer;'>🌐 Visit Website</button>
+                      </a>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+        else:
+            st.info("No scholarships in this section.")
+
+    show_cards(tn_df, "🏛️ Tamil Nadu State Scholarships", "#f9f9f9")
+    show_cards(central_df, "🇮🇳 Central Government Scholarships", "#f0f7ff")
+
+    st.markdown("---")
+    st.subheader("📊 Visual Insights")
+
     col1, col2 = st.columns(2)
     with col1:
-        selected_col = st.selectbox(
-            "Select Column to Visualize",
-            ["Category", "Gender", "Level", "Education Level"],
-            index=0
-        )
-
-        st.bar_chart(df_dash[selected_col].value_counts())
-
+        st.bar_chart(df_dash["Category"].value_counts())
     with col2:
-        st.subheader("🥧 Pie Chart")
-        pie_data = df_dash[selected_col].value_counts()
+        pie_data = df_dash["Gender"].value_counts()
         fig, ax = plt.subplots()
         ax.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%", startangle=90)
         ax.axis("equal")
         st.pyplot(fig)
-
-    # Histogram of Amounts
-    st.subheader("💰 Scholarship Amount Distribution")
-    try:
-        df_dash["Amount_numeric"] = (
-            df_dash["Amount"]
-            .astype(str)
-            .replace('[₹,–]', '', regex=True)
-            .replace('', '0')
-            .astype(float)
-        )
-        fig2, ax2 = plt.subplots()
-        ax2.hist(df_dash["Amount_numeric"], bins=30)
-        ax2.set_xlabel("Scholarship Amount (₹)")
-        ax2.set_ylabel("Frequency")
-        st.pyplot(fig2)
-    except:
-        st.warning("⚠️ Unable to plot scholarship amount distribution.")
-
 
 # ---------------------------------------------------------
 # Footer
@@ -261,12 +224,12 @@ with tab3:
 st.markdown("---")
 st.markdown(
     """
-    **Developed by:** Logesh Kannan S
-    
+    **Developed by:** Logesh Kannan S  
     **Under Guidance:** Faculty, Anna University Regional Campus Madurai  
-    **Purpose:** Improve accessibility & awareness of scholarship opportunities.
+    **Purpose:** To enhance accessibility and awareness of scholarship opportunities.
     """
 )
+
 
 
 
