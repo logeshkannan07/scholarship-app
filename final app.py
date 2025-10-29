@@ -47,7 +47,12 @@ st.markdown("---")
 # ---------------------------------------------------------
 # 🔖 Tabs
 # ---------------------------------------------------------
-tab1, tab2 = st.tabs(["🏆 Scholarship Eligibility Finder", "📊 Scholarship Reach Predictor"])
+tab1, tab2, tab3 = st.tabs([
+    "🏆 Scholarship Eligibility Finder", 
+    "📊 Scholarship Reach Predictor",
+    "📈 Data Dashboard"
+])
+
 
 # =========================================================
 # TAB 1: Scholarship Eligibility Finder
@@ -195,6 +200,60 @@ with tab2:
             r2 = r2_score(y_test,y_pred)
             res.append({"Model":name,"RMSE":round(rmse,2),"R²":round(r2,2)})
         st.table(pd.DataFrame(res))
+    # =========================================================
+# TAB 3: Dashboard
+# =========================================================
+with tab3:
+    st.header("📈 Scholarship Data Dashboard")
+
+    try:
+        df_dash = pd.read_csv("Curated_Scholarships_India_TN_200.csv")
+        st.success("✅ Dataset loaded successfully!")
+    except FileNotFoundError:
+        st.error("❌ Could not find the dataset file.")
+        st.stop()
+
+    st.subheader("🔍 Dataset Overview")
+    st.dataframe(df_dash, use_container_width=True)
+    st.write(f"**Rows:** {df_dash.shape[0]}, **Columns:** {df_dash.shape[1]}")
+
+    # Select column for visualization
+    col1, col2 = st.columns(2)
+    with col1:
+        selected_col = st.selectbox(
+            "Select Column to Visualize",
+            ["Category", "Gender", "Level", "Education Level"],
+            index=0
+        )
+
+        st.bar_chart(df_dash[selected_col].value_counts())
+
+    with col2:
+        st.subheader("🥧 Pie Chart")
+        pie_data = df_dash[selected_col].value_counts()
+        fig, ax = plt.subplots()
+        ax.pie(pie_data, labels=pie_data.index, autopct="%1.1f%%", startangle=90)
+        ax.axis("equal")
+        st.pyplot(fig)
+
+    # Histogram of Amounts
+    st.subheader("💰 Scholarship Amount Distribution")
+    try:
+        df_dash["Amount_numeric"] = (
+            df_dash["Amount"]
+            .astype(str)
+            .replace('[₹,–]', '', regex=True)
+            .replace('', '0')
+            .astype(float)
+        )
+        fig2, ax2 = plt.subplots()
+        ax2.hist(df_dash["Amount_numeric"], bins=30)
+        ax2.set_xlabel("Scholarship Amount (₹)")
+        ax2.set_ylabel("Frequency")
+        st.pyplot(fig2)
+    except:
+        st.warning("⚠️ Unable to plot scholarship amount distribution.")
+
 
 # ---------------------------------------------------------
 # Footer
@@ -208,6 +267,7 @@ st.markdown(
     **Purpose:** Improve accessibility & awareness of scholarship opportunities.
     """
 )
+
 
 
 
