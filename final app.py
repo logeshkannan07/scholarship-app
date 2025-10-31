@@ -17,9 +17,6 @@ import pickle
 import os
 import plotly.express as px
 
-
-st.markdown(page_style, unsafe_allow_html=True)
-
 # plotting libs (try plotly, fallback to matplotlib)
 try:
     import plotly.express as px
@@ -446,5 +443,6 @@ with tab3:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("**Developed by:** Logesh Kannan  ·  **Guide:** Dr. Rajkumar  · Anna University Regional Campus, Madurai")
+
 
 
