@@ -1,4 +1,3 @@
-pip install plotly
 import streamlit as st
 import pandas as pd
 import pickle
@@ -140,4 +139,5 @@ with tab3:
 # END OF APP
 # -----------------------------------------
 st.caption("Developed by Logesh Kannan | Guided by Dr. Rajkumar | Anna University © 2025")
+
 
