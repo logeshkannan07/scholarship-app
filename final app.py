@@ -229,27 +229,27 @@ with tab1:
             st.markdown("---")
             view_mode = st.radio("View as", ["Cards","Table"], horizontal=True)
 
-           if view_mode == "Table":
+            if view_mode == "Table":
     # define desired columns
-    desired_cols = [
-        'scholarship_name','level','category','gender',
-        'education_level','income_limit','amount','website'
-    ]
+              desired_cols = [
+                       'scholarship_name','level','category','gender',
+                   'education_level','income_limit','amount','website'
+                     ]
     # only keep columns that actually exist
-    show_cols = [c for c in desired_cols if c in eligible_df.columns]
+             show_cols = [c for c in desired_cols if c in eligible_df.columns]
 
-    if not show_cols:
-        st.warning("No suitable columns found to display as a table.")
-    else:
-        rename_map = {
-            'scholarship_name': 'Scholarship Name',
-            'education_level': 'Education Level',
-            'income_limit': 'Income Limit',
-            'amount': 'Amount (₹)',
-            'website': 'Website'
-        }
-        df_to_show = eligible_df[show_cols].rename(columns=rename_map).reset_index(drop=True)
-        st.dataframe(df_to_show, use_container_width=True)
+            if not show_cols:
+              st.warning("No suitable columns found to display as a table.")
+            else:
+              rename_map = {
+               'scholarship_name': 'Scholarship Name',
+               'education_level': 'Education Level',
+               'income_limit': 'Income Limit',
+               'amount': 'Amount (₹)',
+               'website': 'Website'
+              }
+              df_to_show = eligible_df[show_cols].rename(columns=rename_map).reset_index(drop=True)
+              st.dataframe(df_to_show, use_container_width=True)
 
             else:
                 # cards: TN first then Central
@@ -460,6 +460,3 @@ with tab3:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("**Developed by:** Logesh Kannan  ·  **Guide:** Dr. Rajkumar  · Anna University Regional Campus, Madurai")
-
-
-
