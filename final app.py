@@ -1,13 +1,5 @@
 # final_app.py
 # Robust Streamlit app for Scholarship Finder + Reach Predictor + Dashboard
-# Put this file in the same folder as:
-# - Curated_Scholarships_India_TN_200.csv
-# - TN_Scholarship_Reach_REALISTIC.csv
-# - Linear_Regression_model.pkl
-# - Random_Forest_model.pkl
-# - Gradient_Boosting_model.pkl
-# - scaler.pkl
-# - anna-university-logo.png (optional)
 
 import streamlit as st
 import pandas as pd
@@ -37,13 +29,11 @@ st.title("🎓 Anna University Scholarship App")
 st.markdown("**Eligibility Finder • Reach Predictor • Dataset Dashboard**")
 st.markdown("---")
 
-# ---------------- Helpers: robust column detection ----------------
+# ---------------- Helpers ----------------
 def detect_and_rename_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
-    # make a lowercase map for detection
     orig_cols = list(df.columns)
     colmap = {c: c.lower().strip().replace(" ", "_") for c in orig_cols}
 
-    # helper to find column by keyword possibilities
     def find_col(*keywords):
         for k in keywords:
             for orig, low in colmap.items():
@@ -63,24 +53,22 @@ def detect_and_rename_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
     mapping['description'] = find_col("description", "details", "note")
     mapping['provider'] = find_col("provider", "agency", "organisation", "organization")
 
-    # build rename dict for pandas
     rename_dict = {}
     for std_name, orig in mapping.items():
         if orig and orig in df.columns:
             rename_dict[orig] = std_name
         else:
-            # create blank column if not found
             df[std_name] = ""
     if rename_dict:
         df = df.rename(columns=rename_dict)
-    # final ensure standard columns exist
+
     for c in ['scholarship_name','level','category','gender','education_level','income_limit','amount','website','description','provider']:
         if c not in df.columns:
             df[c] = ""
-    # strip spaces in string columns
+
     for c in df.select_dtypes(include=['object']).columns:
         df[c] = df[c].astype(str).str.strip()
-    # numeric conversions
+
     try:
         df['income_limit_numeric'] = df['income_limit'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
     except Exception:
@@ -97,7 +85,7 @@ def safe_read_csv(path):
         st.stop()
     return pd.read_csv(path)
 
-# ---------------- Load scholarship dataset ----------------
+# ---------------- Load Data ----------------
 @st.cache_data
 def load_scholarship_df(path="Curated_Scholarships_India_TN_200.csv"):
     df = safe_read_csv(path)
@@ -107,14 +95,12 @@ def load_scholarship_df(path="Curated_Scholarships_India_TN_200.csv"):
 
 sch_df = load_scholarship_df()
 
-# ---------------- Load reach dataset ----------------
 @st.cache_data
 def load_reach_df(path="TN_Scholarship_Reach_REALISTIC.csv"):
     if not os.path.exists(path):
         return pd.DataFrame()
     df = pd.read_csv(path)
     df.columns = df.columns.str.strip()
-    # compute derived if possible
     if 'avg_family_income' in df.columns and 'school_infrastructure_index' in df.columns:
         df['income_to_infra'] = df['avg_family_income'] / df['school_infrastructure_index'].replace(0,1)
     if 'literacy_rate' in df.columns and 'schools_with_internet_percent' in df.columns:
@@ -123,12 +109,11 @@ def load_reach_df(path="TN_Scholarship_Reach_REALISTIC.csv"):
 
 reach_df = load_reach_df()
 
-# ---------------- Safe model/scaler loading ----------------
+# ---------------- Load Models ----------------
 @st.cache_resource
 def load_models_and_scaler():
     models = {}
     warnings = []
-    # attempt to load each model
     for name, fname in [
         ("Linear Regression","Linear_Regression_model.pkl"),
         ("Random Forest","Random_Forest_model.pkl"),
@@ -136,18 +121,15 @@ def load_models_and_scaler():
     ]:
         if os.path.exists(fname):
             try:
-                # prefer joblib if pickled via joblib
                 try:
                     models[name] = joblib.load(fname)
                 except Exception:
                     with open(fname,'rb') as f:
                         models[name] = pickle.load(f)
-                # success
             except Exception as e:
                 warnings.append(f"Could not load {fname}: {e}")
         else:
             warnings.append(f"Model file not found: {fname}")
-    # load scaler safe
     scaler = None
     if os.path.exists("scaler.pkl"):
         try:
@@ -167,15 +149,14 @@ models, scaler, load_warnings = load_models_and_scaler()
 for w in load_warnings:
     st.warning(w)
 
-# ---------------- UI tabs ----------------
+# ---------------- UI Tabs ----------------
 tab1, tab2, tab3 = st.tabs(["🏆 Eligibility Finder","📊 Reach Predictor","📈 Data Dashboard"])
 
-# ---------------- TAB 1: Eligibility Finder (upgraded cards) ----------------
+# ---------------- TAB 1 ----------------
 with tab1:
     st.header("🎯 Scholarship Eligibility Finder")
-    st.markdown("Enter your details to find eligible scholarships. Results displayed as clickable cards (Tamil Nadu / Central).")
+    st.markdown("Enter your details to find eligible scholarships.")
 
-    # controls with safe options
     genders = ["All"] + sorted(set([g for g in sch_df['gender'].unique() if g and g.lower()!="nan"]))
     categories = ["All"] + sorted(set([c for c in sch_df['category'].unique() if c and c.lower()!="nan"]))
     edulevels = ["All"] + sorted(set([e for e in sch_df['education_level'].unique() if e and e.lower()!="nan"]))
@@ -192,33 +173,26 @@ with tab1:
 
     def filter_eligible(df):
         df2 = df.copy()
-        # income: use income_limit_numeric if present
         if 'income_limit_numeric' in df2.columns:
-            # keep rows where income limit is NaN OR input_income <= limit
             df2 = df2[(df2['income_limit_numeric'].isna()) | (input_income <= df2['income_limit_numeric'])]
-        # gender
         if input_gender and input_gender != "All":
             df2 = df2[(df2['gender'].str.lower() == input_gender.lower()) | (df2['gender'].str.lower() == "all")]
-        # category
         if input_category and input_category != "All":
             df2 = df2[(df2['category'].str.upper() == input_category.upper()) | (df2['category'].str.upper() == "ALL")]
-        # education
         if input_edu and input_edu != "All":
             df2 = df2[df2['education_level'].str.contains(input_edu, case=False, na=False) | (df2['education_level'].str.lower()=="all")]
-        # search
         if search_term:
             df2 = df2[df2['scholarship_name'].str.contains(search_term, case=False, na=False) | df2['description'].str.contains(search_term, case=False, na=False)]
         return df2
 
     if st.button("🔎 Find Eligible Scholarships"):
         eligible_df = filter_eligible(sch_df)
-        st.session_state['eligible_df'] = eligible_df  # store for dashboard if needed
+        st.session_state['eligible_df'] = eligible_df
 
         if eligible_df.empty:
-            st.warning("No scholarships matched your criteria. Try loosening filters.")
+            st.warning("No scholarships matched your criteria.")
         else:
             st.success(f"Found {len(eligible_df)} scholarships.")
-            # counts
             tn_df = eligible_df[eligible_df['level'].str.contains("state|tn|tamil", case=False, na=False)]
             central_df = eligible_df[eligible_df['level'].str.contains("central|national", case=False, na=False)]
             c1, c2, c3 = st.columns(3)
@@ -230,29 +204,27 @@ with tab1:
             view_mode = st.radio("View as", ["Cards","Table"], horizontal=True)
 
             if view_mode == "Table":
-    # define desired columns
-              desired_cols = [
-                       'scholarship_name','level','category','gender',
-                   'education_level','income_limit','amount','website'
-                     ]
-    # only keep columns that actually exist
-             show_cols = [c for c in desired_cols if c in eligible_df.columns]
+                desired_cols = [
+                    'scholarship_name','level','category','gender',
+                    'education_level','income_limit','amount','website'
+                ]
+                show_cols = [c for c in desired_cols if c in eligible_df.columns]
 
-            if not show_cols:
-              st.warning("No suitable columns found to display as a table.")
-            else:
-              rename_map = {
-               'scholarship_name': 'Scholarship Name',
-               'education_level': 'Education Level',
-               'income_limit': 'Income Limit',
-               'amount': 'Amount (₹)',
-               'website': 'Website'
-              }
-              df_to_show = eligible_df[show_cols].rename(columns=rename_map).reset_index(drop=True)
-              st.dataframe(df_to_show, use_container_width=True)
+                if not show_cols:
+                    st.warning("No suitable columns found to display as a table.")
+                else:
+                    rename_map = {
+                        'scholarship_name': 'Scholarship Name',
+                        'education_level': 'Education Level',
+                        'income_limit': 'Income Limit',
+                        'amount': 'Amount (₹)',
+                        'website': 'Website'
+                    }
+                    df_to_show = eligible_df[show_cols].rename(columns=rename_map).reset_index(drop=True)
+                    st.dataframe(df_to_show, use_container_width=True)
 
             else:
-                # cards: TN first then Central
+                # --- CARD VIEW ---
                 st.markdown("### 🟢 Tamil Nadu Scholarships")
                 if not tn_df.empty:
                     for _, r in tn_df.iterrows():
@@ -272,8 +244,8 @@ with tab1:
                                 <div style='max-width:78%;'>
                                   <h4 style='margin:0;color:#0a58ca'>{name}</h4>
                                   <small style='color:#333'>{prov}</small>
-                                  <p style='margin:6px 0 0 0;'><b>Category:</b> {cat} &nbsp; | &nbsp; <b>Gender:</b> {gen} &nbsp; | &nbsp; <b>Edu:</b> {edu}</p>
-                                  <p style='margin:6px 0 0 0;'><b>Income Limit:</b> {inc} &nbsp; | &nbsp; <b>Amount:</b> {amt}</p>
+                                  <p style='margin:6px 0 0 0;'><b>Category:</b> {cat} | <b>Gender:</b> {gen} | <b>Edu:</b> {edu}</p>
+                                  <p style='margin:6px 0 0 0;'><b>Income Limit:</b> {inc} | <b>Amount:</b> {amt}</p>
                                 </div>
                                 <div style='text-align:right;'>
                                   <a href="{web}" target="_blank" style='background:#198754;color:white;padding:7px 12px;border-radius:8px;text-decoration:none;'>Apply</a>
@@ -303,8 +275,8 @@ with tab1:
                                 <div style='max-width:78%;'>
                                   <h4 style='margin:0;color:#7b1fa2'>{name}</h4>
                                   <small style='color:#333'>{prov}</small>
-                                  <p style='margin:6px 0 0 0;'><b>Category:</b> {cat} &nbsp; | &nbsp; <b>Gender:</b> {gen} &nbsp; | &nbsp; <b>Edu:</b> {edu}</p>
-                                  <p style='margin:6px 0 0 0;'><b>Income Limit:</b> {inc} &nbsp; | &nbsp; <b>Amount:</b> {amt}</p>
+                                  <p style='margin:6px 0 0 0;'><b>Category:</b> {cat} | <b>Gender:</b> {gen} | <b>Edu:</b> {edu}</p>
+                                  <p style='margin:6px 0 0 0;'><b>Income Limit:</b> {inc} | <b>Amount:</b> {amt}</p>
                                 </div>
                                 <div style='text-align:right;'>
                                   <a href="{web}" target="_blank" style='background:#0d6efd;color:white;padding:7px 12px;border-radius:8px;text-decoration:none;'>Apply</a>
@@ -314,6 +286,9 @@ with tab1:
                         """, unsafe_allow_html=True)
                 else:
                     st.info("No Central scholarships found.")
+
+# (The rest of Tab 2 and Tab 3 are unchanged)
+
 
 # ---------------- TAB 2: Reach Predictor (fixed features) ----------------
 with tab2:
@@ -460,3 +435,4 @@ with tab3:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("**Developed by:** Logesh Kannan  ·  **Guide:** Dr. Rajkumar  · Anna University Regional Campus, Madurai")
+
