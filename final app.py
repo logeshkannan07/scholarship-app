@@ -15,6 +15,76 @@ import numpy as np
 import joblib
 import pickle
 import os
+import plotly.express as px
+
+# --- 🎨 Elegant Background & UI Styling ---
+page_style = """
+<style>
+/* Page background */
+[data-testid="stAppViewContainer"] {
+    background-color: #f4f8fb;  /* Soft blue tone */
+    color: #000000;
+}
+
+/* Sidebar styling */
+[data-testid="stSidebar"] {
+    background-color: #ffffff;
+    border-right: 2px solid #e0e0e0;
+}
+
+/* Headers and titles */
+h1, h2, h3 {
+    color: #004aad;  /* Anna University blue */
+    font-family: 'Segoe UI', sans-serif;
+    font-weight: 700;
+}
+
+/* Cards and containers */
+div[data-testid="stVerticalBlock"] > div {
+    background-color: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.08);
+    margin-bottom: 15px;
+}
+
+/* Buttons */
+.stButton>button {
+    background-color: #004aad;
+    color: white;
+    font-weight: 600;
+    border-radius: 8px;
+    border: none;
+    padding: 0.5em 1em;
+    transition: 0.3s;
+}
+.stButton>button:hover {
+    background-color: #0066cc;
+}
+
+/* Tables */
+[data-testid="stDataFrame"] {
+    background-color: white;
+    border-radius: 10px;
+    padding: 10px;
+}
+
+/* Tabs */
+[data-baseweb="tab-list"] {
+    background-color: white;
+    border-radius: 10px;
+    padding: 4px;
+}
+[data-baseweb="tab"] {
+    color: #004aad;
+    font-weight: 600;
+}
+[data-baseweb="tab"]:hover {
+    background-color: #e8f0fe;
+}
+</style>
+"""
+st.markdown(page_style, unsafe_allow_html=True)
 
 # plotting libs (try plotly, fallback to matplotlib)
 try:
@@ -442,3 +512,4 @@ with tab3:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("**Developed by:** Logesh Kannan  ·  **Guide:** Dr. Rajkumar  · Anna University Regional Campus, Madurai")
+
