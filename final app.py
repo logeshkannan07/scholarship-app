@@ -20,7 +20,7 @@ st.markdown(
     """
     <style>
     [data-testid="stAppViewContainer"] {
-        background-color: #fff8f8;  /* Soft light blue */
+        background-color: #f4f8fb;  /* Soft light blue */
     }
     </style>
     """,
@@ -454,6 +454,7 @@ with tab3:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("**Developed by:** Logesh Kannan  ·  **Guide:** Dr. Rajkumar  · Anna University Regional Campus, Madurai")
+
 
 
 
