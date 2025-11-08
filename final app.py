@@ -59,7 +59,7 @@ def find_col_by_keywords(colmap, *keywords):
 
 def detect_and_rename_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
     orig_cols = list(df.columns)
-    colmap = {c: c.lower().strip().replace(" ", "_") c for c in orig_cols}
+    colmap = {c: c.lower().strip().replace(" ", "_") for c in orig_cols}
 
     def find_col(*keywords):
         for k in keywords:
@@ -576,4 +576,5 @@ with tab3:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("**Developed by:** Logesh Kannan  ·  **Guide:** Dr. Rajkumar  · Anna University Regional Campus, Madurai")
+
 
