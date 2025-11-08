@@ -16,7 +16,7 @@ import joblib
 import pickle
 import os
 
-# keep plotly import optional (your app already uses it)
+# plotly optional
 try:
     import plotly.express as px
     PLOTLY_AVAILABLE = True
@@ -49,19 +49,21 @@ st.title("🎓 Anna University Scholarship App")
 st.markdown("**Eligibility Finder • Reach Predictor • Dataset Dashboard**")
 st.markdown("---")
 
-# ---------------- Helpers: robust column detection ----------------
+# ---------------- Helpers: robust column detection & normalization ----------------
+def find_col_by_keywords(colmap, *keywords):
+    for k in keywords:
+        for orig, low in colmap.items():
+            if k in low:
+                return orig
+    return None
+
 def detect_and_rename_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Attempt to map common column name variants to a standard set used by the app.
-    If a column is missing, an empty column is created so downstream code doesn't fail.
-    Also create normalized columns (gender_norm, category_norm, education_norm).
-    """
     orig_cols = list(df.columns)
-    colmap = {c: c.lower().strip().replace(" ", "_") for c in orig_cols}
+    colmap = {c: c.lower().strip().replace(" ", "_"): c for c in orig_cols}
 
     def find_col(*keywords):
         for k in keywords:
-            for orig, low in colmap.items():
+            for low, orig in colmap.items():
                 if k in low:
                     return orig
         return None
@@ -78,117 +80,109 @@ def detect_and_rename_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
     mapping['description'] = find_col("description", "details", "note")
     mapping['provider'] = find_col("provider", "agency", "organisation", "organization")
 
-    # Rename existing columns to our standard names
     rename_dict = {}
     for std_name, orig in mapping.items():
         if orig and orig in df.columns:
             rename_dict[orig] = std_name
         else:
-            # create blank column if not found
             df[std_name] = ""
 
     if rename_dict:
         df = df.rename(columns=rename_dict)
 
-    # Ensure standard columns exist
+    # Ensure existence of standard columns
     for c in ['scholarship_name','level','category','gender','education_level','income_limit','amount','website','description','provider']:
         if c not in df.columns:
             df[c] = ""
 
-    # Trim whitespace in string columns
+    # Trim whitespace in object columns
     for c in df.select_dtypes(include=['object']).columns:
         df[c] = df[c].astype(str).str.strip()
 
-    # Try to create numeric income/amount columns safely
+    # numeric conversions safely
     if 'income_limit_numeric' not in df.columns:
         try:
-            if df['income_limit'].notna().any():
-                df['income_limit_numeric'] = df['income_limit'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
-            else:
-                df['income_limit_numeric'] = np.nan
+            df['income_limit_numeric'] = df['income_limit'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
         except Exception:
             df['income_limit_numeric'] = np.nan
     else:
-        # if it exists already, ensure numeric
-        try:
-            df['income_limit_numeric'] = pd.to_numeric(df['income_limit_numeric'], errors='coerce')
-        except Exception:
-            df['income_limit_numeric'] = np.nan
+        df['income_limit_numeric'] = pd.to_numeric(df['income_limit_numeric'], errors='coerce')
 
     if 'amount_numeric' not in df.columns:
         try:
-            if df['amount'].notna().any():
-                df['amount_numeric'] = df['amount'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
-            else:
-                df['amount_numeric'] = np.nan
+            df['amount_numeric'] = df['amount'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
         except Exception:
             df['amount_numeric'] = np.nan
     else:
-        try:
-            df['amount_numeric'] = pd.to_numeric(df['amount_numeric'], errors='coerce')
-        except Exception:
-            df['amount_numeric'] = np.nan
+        df['amount_numeric'] = pd.to_numeric(df['amount_numeric'], errors='coerce')
 
-    # ---------- Create normalized columns ----------
-    # Normalize gender
-    def norm_gender(val):
-        if val is None:
-            return "All"
-        s = str(val).strip().lower()
-        if s == "" or s in ["all", "na", "n/a", "none", "any"]:
-            return "All"
-        if s.startswith("m") or s in ["male","man","males","boy","boys","male "]:
-            return "Male"
-        if s.startswith("f") or s in ["female","woman","women","girl","girls"]:
-            return "Female"
-        return "All"  # default safe option
+    return df
 
-    df['gender_norm'] = df['gender'].apply(norm_gender)
+# Normalizers (kept small, extendable)
+def norm_gender(val):
+    if pd.isna(val) or str(val).strip()=="":
+        return "All"
+    s = str(val).strip().lower()
+    if s in ["all","na","n/a","none","any",""]:
+        return "All"
+    if s.startswith("m") or s in ["male","man","males","boy","boys"]:
+        return "Male"
+    if s.startswith("f") or s in ["female","woman","women","girl","girls"]:
+        return "Female"
+    return "All"
 
-    # Normalize category
-    def norm_category(val):
-        if val is None:
-            return "All"
-        s = str(val).strip().lower()
-        if s == "" or s in ["all", "na", "n/a", "none"]:
-            return "All"
-        # common variants
-        if any(tok in s for tok in ["sc", "scheduled caste", "adi dravidar", "scheduledcaste"]):
-            return "SC"
-        if any(tok in s for tok in ["st", "scheduled tribe", "scheduledtribe"]):
-            return "ST"
-        if any(tok in s for tok in ["obc", "bc", "backward", "backward class", "backwardclass"]):
-            return "OBC"
-        if "minority" in s:
-            # user said minority denotes sc/st like that — we keep an explicit marker "Minority"
-            return "Minority"
-        if "general" in s or "open" in s:
-            return "General"
-        # fallback: if contains specific group names, preserve them as is
-        return s.upper()
+def norm_category(val):
+    if pd.isna(val) or str(val).strip()=="":
+        return "All"
+    s = str(val).strip().lower()
+    if s in ["all","na","n/a","none","any",""]:
+        return "All"
+    if any(tok in s for tok in ["sc","scheduled caste","adi dravidar"]):
+        return "SC"
+    if any(tok in s for tok in ["st","scheduled tribe"]):
+        return "ST"
+    if any(tok in s for tok in ["obc","bc","backward"]):
+        return "OBC"
+    if "minority" in s:
+        return "Minority"
+    if "general" in s or "open" in s:
+        return "General"
+    return s.upper()
 
-    df['category_norm'] = df['category'].apply(norm_category)
+def norm_education(val):
+    if pd.isna(val) or str(val).strip()=="":
+        return "All"
+    s = str(val).strip().lower()
+    if s in ["all","na","n/a","none","any",""]:
+        return "All"
+    if any(tok in s for tok in ["ug","undergrad","bachelor","b.tech","bsc","ba","be","b.e","b.com"]):
+        return "Undergraduate"
+    if any(tok in s for tok in ["pg","postgrad","master","m.tech","msc","ma","m.com","m.e"]):
+        return "Postgraduate"
+    if any(tok in s for tok in ["phd","doctor","doctoral"]):
+        return "PhD"
+    if any(tok in s for tok in ["school","higher secondary","hsc","12th","10th","secondary"]):
+        return "School"
+    return s.title()
 
-    # Normalize education level
-    def norm_education(val):
-        if val is None:
-            return "All"
-        s = str(val).strip().lower()
-        if s == "" or s in ["all","na","n/a","none"]:
-            return "All"
-        if any(tok in s for tok in ["ug", "undergrad", "bachelor", "b.tech", "bsc", "ba", "b.e", "b.com"]):
-            return "Undergraduate"
-        if any(tok in s for tok in ["pg", "postgrad", "master", "m.tech", "msc", "ma", "m.com", "m.e"]):
-            return "Postgraduate"
-        if any(tok in s for tok in ["phd", "doctor", "doctoral"]):
-            return "PhD"
-        if any(tok in s for tok in ["school", "higher secondary", "hsc", "12th", "10th", "secondary"]):
-            return "School"
-        return s.title()
+def ensure_normalized_columns(df):
+    # create normalized columns if missing
+    if 'gender_norm' not in df.columns:
+        df['gender_norm'] = df['gender'].apply(norm_gender)
+    else:
+        df['gender_norm'] = df['gender_norm'].fillna("").apply(norm_gender)
 
-    df['education_norm'] = df['education_level'].apply(norm_education)
+    if 'category_norm' not in df.columns:
+        df['category_norm'] = df['category'].apply(norm_category)
+    else:
+        df['category_norm'] = df['category_norm'].fillna("").apply(norm_category)
 
-    # If some rows have blank gender/category/education, treat as 'All'
+    if 'education_norm' not in df.columns:
+        df['education_norm'] = df['education_level'].apply(norm_education)
+    else:
+        df['education_norm'] = df['education_norm'].fillna("").apply(norm_education)
+
+    # fillna safety
     df['gender_norm'] = df['gender_norm'].fillna("All")
     df['category_norm'] = df['category_norm'].fillna("All")
     df['education_norm'] = df['education_norm'].fillna("All")
@@ -211,6 +205,7 @@ def load_scholarship_df(path="Curated_Scholarships_India_TN_200.csv"):
     df = safe_read_csv(path)
     df.columns = df.columns.str.strip()
     df = detect_and_rename_scholarship_columns(df)
+    df = ensure_normalized_columns(df)
     return df
 
 sch_df = load_scholarship_df()
@@ -244,7 +239,6 @@ reach_df = load_reach_df()
 def load_models_and_scaler():
     models = {}
     warnings = []
-    # attempt to load each model
     for name, fname in [
         ("Linear Regression","Linear_Regression_model.pkl"),
         ("Random Forest","Random_Forest_model.pkl"),
@@ -261,7 +255,6 @@ def load_models_and_scaler():
                 warnings.append(f"Could not load {fname}: {e}")
         else:
             warnings.append(f"Model file not found: {fname}")
-    # load scaler safe
     scaler = None
     if os.path.exists("scaler.pkl"):
         try:
@@ -284,12 +277,12 @@ for w in load_warnings:
 # ---------------- UI tabs ----------------
 tab1, tab2, tab3 = st.tabs(["🏆 Eligibility Finder","📊 Reach Predictor","📈 Data Dashboard"])
 
-# ---------------- TAB 1: Eligibility Finder (simplified filters with normalization) ----------------
+# ---------------- TAB 1: Eligibility Finder ----------------
 with tab1:
     st.header("🎯 Scholarship Eligibility Finder")
     st.markdown("Enter your details to find eligible scholarships. Results displayed as clickable cards (Tamil Nadu / Central).")
 
-    # ----- Simplified fixed filter options (basic lists) -----
+    # simplified fixed filter options
     genders = ["All", "Male", "Female"]
     categories = ["All", "SC", "ST", "OBC", "General", "Minority"]
     edulevels = ["All", "School", "Undergraduate", "Postgraduate", "PhD"]
@@ -304,31 +297,31 @@ with tab1:
     with col3:
         search_term = st.text_input("Search scholarship name or keyword", "")
 
-    # filtering function (uses standardized normalized columns)
     def filter_eligible(df):
         df2 = df.copy()
+        # ensure normalized cols exist
+        df2 = ensure_normalized_columns(df2)
 
-        # income: use normalized numeric column if present
+        # income filter
         if 'income_limit_numeric' in df2.columns:
             df2 = df2[(df2['income_limit_numeric'].isna()) | (input_income <= df2['income_limit_numeric'])]
 
-        # gender: include rows that are 'All' OR match the chosen gender
+        # gender
         if input_gender and input_gender != "All":
             df2 = df2[df2['gender_norm'].isin([input_gender, "All"])]
 
-        # category:
+        # category: include Minority when SC/ST selected
         if input_category and input_category != "All":
-            # For SC or ST, include rows labeled 'Minority' as user suggested minority denotes sc/st
-            if input_category in ["SC", "ST"]:
+            if input_category in ["SC","ST"]:
                 df2 = df2[df2['category_norm'].isin([input_category, "Minority", "All"])]
             else:
                 df2 = df2[df2['category_norm'].isin([input_category, "All"])]
 
-        # education:
+        # education
         if input_edu and input_edu != "All":
             df2 = df2[df2['education_norm'].isin([input_edu, "All"])]
 
-        # search term: match name or description
+        # search
         if search_term:
             df2 = df2[
                 df2['scholarship_name'].str.contains(search_term, case=False, na=False) |
@@ -338,13 +331,12 @@ with tab1:
 
     if st.button("🔎 Find Eligible Scholarships"):
         eligible_df = filter_eligible(sch_df)
-        st.session_state['eligible_df'] = eligible_df  # store for dashboard if needed
+        st.session_state['eligible_df'] = eligible_df
 
         if eligible_df.empty:
             st.warning("No scholarships matched your criteria. Try loosening filters.")
         else:
             st.success(f"Found {len(eligible_df)} scholarships.")
-            # counts
             tn_df = eligible_df[eligible_df['level'].str.contains("state|tn|tamil", case=False, na=False)]
             central_df = eligible_df[eligible_df['level'].str.contains("central|national", case=False, na=False)]
             c1, c2, c3 = st.columns(3)
@@ -361,7 +353,6 @@ with tab1:
                 st.dataframe(eligible_df[show_cols].rename(columns={
                     'scholarship_name':'Scholarship Name','education_level':'Education Level','income_limit':'Income Limit'}).reset_index(drop=True), use_container_width=True)
             else:
-                # cards: TN first then Central
                 st.markdown("### 🟢 Tamil Nadu Scholarships")
                 if not tn_df.empty:
                     for _, r in tn_df.iterrows():
@@ -424,14 +415,13 @@ with tab1:
                 else:
                     st.info("No Central scholarships found.")
 
-# ---------------- TAB 2: Reach Predictor (fixed features) ----------------
+# ---------------- TAB 2: Reach Predictor ----------------
 with tab2:
     st.header("📊 Scholarship Reach Predictor (District-level)")
 
     if reach_df.empty:
         st.warning("Reach dataset TN_Scholarship_Reach_REALISTIC.csv not found or empty.")
     else:
-        # ensure derived fields exist
         if 'income_to_infra' not in reach_df.columns and 'avg_family_income' in reach_df.columns and 'school_infrastructure_index' in reach_df.columns:
             reach_df['income_to_infra'] = reach_df['avg_family_income'] / reach_df['school_infrastructure_index'].replace(0,1)
         if 'awareness_index' not in reach_df.columns and 'literacy_rate' in reach_df.columns and 'schools_with_internet_percent' in reach_df.columns:
@@ -442,20 +432,16 @@ with tab2:
             "num_students","schools_with_computer_lab_percent","schools_with_internet_percent",
             "school_infrastructure_index","income_to_infra","awareness_index"
         ]
-        # check available features
-        available_feats = [f for f in required_feats if f in reach_df.columns]
         missing = [f for f in required_feats if f not in reach_df.columns]
         if missing:
             st.warning(f"Some expected features are missing from reach dataset: {missing}. Prediction may fail or be less accurate.")
 
-        # model selector
         if models:
             model_choice = st.selectbox("Choose model", list(models.keys()))
         else:
             st.error("No models loaded. Upload model .pkl files.")
             st.stop()
 
-        # district safe selection
         district_list = list(reach_df['district'].dropna().unique())
         district = st.selectbox("Select District", district_list)
         if district in reach_df['district'].values:
@@ -463,7 +449,6 @@ with tab2:
         else:
             row = reach_df.iloc[0]
 
-        # populate inputs with district defaults
         colA, colB = st.columns(2)
         with colA:
             avg_income = st.number_input("Average Family Income", value=float(row.get('avg_family_income',0)))
@@ -476,15 +461,12 @@ with tab2:
             internet_pct = st.number_input("Schools with Internet (%)", value=float(row.get('schools_with_internet_percent',0)))
             infra_idx = st.number_input("School Infrastructure Index", value=float(row.get('school_infrastructure_index',0)))
 
-        # derived
         income_to_infra = avg_income / (infra_idx if infra_idx!=0 else 1)
         awareness_index = (literacy * internet_pct)/100
 
-        # build feature vector in exact order
         feat_vector = [avg_income, literacy, female_ratio, rural_pct, num_students, comp_lab, internet_pct, infra_idx, income_to_infra, awareness_index]
         X = np.array([feat_vector])
 
-        # scale if possible
         if scaler is not None:
             try:
                 Xs = scaler.transform(X)
@@ -508,13 +490,14 @@ with tab2:
 # ---------------- TAB 3: Data Dashboard (full dataset + advanced filters) ----------------
 with tab3:
     st.header("📈 Dataset Visualization Dashboard")
-    st.markdown("Explore the full scholarship dataset using the filters below.")
+    st.markdown("Explore the full scholarship dataset using the filters below. You can also visualize the last 'eligible' search results if available.")
 
+    # ensure normalized columns exist before dashboard operations
+    sch_df = ensure_normalized_columns(sch_df)
     df_vis = sch_df.copy()
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        # level filter: use values present in dataset
         level_options = sorted(df_vis['level'].dropna().unique()) if 'level' in df_vis.columns else ["All"]
         level_filter = st.multiselect("Filter by Level", options=level_options, default=level_options)
         cat_filter = st.multiselect("Filter by Category", options=["All", "SC", "ST", "OBC", "General", "Minority"], default=["All"])
@@ -522,15 +505,13 @@ with tab3:
         gender_filter = st.multiselect("Filter by Gender", options=["All", "Male", "Female"], default=["All"])
         edu_filter = st.multiselect("Filter by Education Level", options=["All", "School", "Undergraduate", "Postgraduate", "PhD"], default=["All"])
     with col3:
-        # income slider: use safe max
         safe_max = int(df_vis['income_limit_numeric'].max(skipna=True) if 'income_limit_numeric' in df_vis.columns and pd.notna(df_vis['income_limit_numeric'].max()) else 1000000)
         income_range = st.slider("Income Limit (₹)", 0, safe_max, (0, safe_max))
         show_top = st.slider("Top N categories (for bar chart)", min_value=3, max_value=30, value=10)
+        use_eligible = st.checkbox("Visualize last eligible search results (if any)", value=False)
 
-    # Apply filters step-by-step (respect "All" semantics)
-    # Category filter: if "All" in selection, keep all, else map selection to category_norm filtering
+    # Apply filters safely
     if "All" not in cat_filter:
-        # for SC/ST selection include 'Minority' rows if user chooses SC or ST
         mask_cat = pd.Series(False, index=df_vis.index)
         for sel in cat_filter:
             if sel in ["SC","ST"]:
@@ -539,12 +520,10 @@ with tab3:
                 mask_cat = mask_cat | df_vis['category_norm'].isin([sel, "All"])
         df_vis = df_vis[mask_cat]
 
-    # Gender filter
     if "All" not in gender_filter:
         mask_gender = df_vis['gender_norm'].isin(gender_filter) | (df_vis['gender_norm'] == "All")
         df_vis = df_vis[mask_gender]
 
-    # Education filter
     if "All" not in edu_filter:
         df_vis = df_vis[df_vis['education_norm'].isin(edu_filter) | (df_vis['education_norm'] == "All")]
 
@@ -557,6 +536,12 @@ with tab3:
             (df_vis['income_limit_numeric'].fillna(-1) >= income_range[0]) &
             (df_vis['income_limit_numeric'].fillna(1e12) <= income_range[1])
         ]
+
+    # Optionally switch to last eligible results (if user asked)
+    if use_eligible and st.session_state.get('eligible_df') is not None:
+        elig = st.session_state['eligible_df']
+        if not elig.empty:
+            df_vis = ensure_normalized_columns(elig.copy())
 
     st.subheader("Summary Metrics")
     t1, t2, t3 = st.columns(3)
