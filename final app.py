@@ -63,13 +63,13 @@ tab1, tab2, tab3 = st.tabs(["🎯 Eligibility Finder", "📈 Reach Predictor", "
 
 # -------------------- TAB 1: ELIGIBILITY FINDER --------------------
 # ---------------- TAB 1: Eligibility Finder (fixed logic) ----------------
+# ---------------- TAB 1: ELIGIBILITY FINDER (FINAL FIXED) ----------------
 with tab1:
     st.header("🎯 Scholarship Eligibility Finder")
     st.markdown("Enter your details to find eligible scholarships. Results displayed as clickable cards (Tamil Nadu / Central).")
 
-    # ----- Simplified fixed filter options (updated lists) -----
     genders = ["All", "Male", "Female", "Transgender"]
-    categories = ["All", "OBC/BC", "SC", "ST", "General", "MBC"]
+    categories = ["All", "OBC/BC", "MBC", "SC", "ST", "General"]
     edulevels = ["All", "UG", "PG", "PhD", "School"]
 
     col1, col2, col3 = st.columns(3)
@@ -82,71 +82,69 @@ with tab1:
     with col3:
         search_term = st.text_input("Search scholarship name or keyword", "")
 
-    # filtering function (uses standardized columns and tags)
     def filter_eligible(df):
         df2 = df.copy()
 
-        # Income filter
+        # --- Income filter ---
         if 'income_limit_numeric' in df2.columns:
             df2 = df2[(df2['income_limit_numeric'].isna()) | (input_income <= df2['income_limit_numeric'])]
 
-        # Gender logic:
-        # Male → exclude Female-only
-        # Female → show Female and All
-        # Transgender → show Transgender and All
+        # --- Gender filter ---
         if input_gender != "All":
             if input_gender == "Male":
-                df2 = df2[~df2['gender_norm'].eq('Female')]
+                df2 = df2[~df2['gender_norm'].str.lower().eq('female')]
             elif input_gender == "Female":
-                df2 = df2[df2['gender_norm'].isin(['Female', 'All'])]
+                df2 = df2[df2['gender_norm'].str.lower().isin(['female', 'all'])]
             elif input_gender == "Transgender":
-                df2 = df2[df2['gender_norm'].isin(['Transgender', 'All'])]
+                df2 = df2[df2['gender_norm'].str.lower().isin(['transgender', 'all'])]
 
-        # Category logic (updated)
+        # --- Category filter ---
         if input_category != "All":
             sel = input_category.lower()
-            def category_matches(tags):
-                if not isinstance(tags, (set, list)):
-                    return False
-                t = set([str(x).lower() for x in tags])
-                if sel in ['obc/bc', 'obc', 'bc']:
-                    return ('obc' in t) or ('bc' in t)
-                if sel == 'sc':
-                    return ('sc' in t)
-                if sel == 'st':
-                    return ('st' in t)
-                if sel == 'general':
-                    return ('general' in t)
-                if sel == 'mbc':
-                    return ('mbc' in t)
-                return any(sel in x for x in t)
-            df2 = df2[df2['category_tags'].apply(category_matches)]
 
-        # Education logic (updated UG/PG/PhD/School)
+            def category_match(cat):
+                if not isinstance(cat, str):
+                    return False
+                c = cat.lower()
+                if sel in ['obc/bc', 'obc', 'bc']:
+                    return ('obc' in c) or ('bc' in c)
+                if sel == 'mbc':
+                    return 'mbc' in c
+                if sel == 'sc':
+                    return 'sc' in c
+                if sel == 'st':
+                    return 'st' in c
+                if sel == 'general':
+                    return 'general' in c
+                return False
+
+            df2 = df2[df2['category'].apply(category_match)]
+
+        # --- Education level filter ---
         if input_edu != "All":
             sel = input_edu.lower()
-            def edu_matches(tags):
-                if not isinstance(tags, (set, list)):
-                    return False
-                t = set([str(x).lower() for x in tags])
-                if sel == 'ug':
-                    return ('ug' in t) or ('ug/pg' in t)
-                if sel == 'pg':
-                    return ('pg' in t) or ('ug/pg' in t)
-                if sel == 'phd':
-                    return ('phd' in t)
-                if sel == 'school':
-                    return ('school' in t)
-                if sel == 'all':
-                    return True
-                return False
-            df2 = df2[df2['edu_tags'].apply(edu_matches)]
 
-        # Search term
+            def edu_match(level):
+                if not isinstance(level, str):
+                    return False
+                l = level.lower()
+                if sel == 'ug':
+                    return ('ug' in l) or ('ug/pg' in l)
+                if sel == 'pg':
+                    return ('pg' in l) or ('ug/pg' in l)
+                if sel == 'phd':
+                    return 'phd' in l
+                if sel == 'school':
+                    return 'school' in l
+                return False
+
+            df2 = df2[df2['level'].apply(edu_match)]
+
+        # --- Search term ---
         if search_term:
             df2 = df2[
-                df2['scholarship_name'].str.contains(search_term, case=False, na=False) |
-                df2['description'].str.contains(search_term, case=False, na=False)
+                df2['scholarship_name'].str.contains(search_term, case=False, na=False)
+                | df2['description'].str.contains(search_term, case=False, na=False)
             ]
 
         return df2
@@ -161,6 +159,7 @@ with tab1:
             st.success(f"Found {len(eligible_df)} scholarships.")
             tn_df = eligible_df[eligible_df['provider_type'].str.contains("Tamil Nadu", case=False, na=False)]
             central_df = eligible_df[eligible_df['provider_type'].str.contains("Central", case=False, na=False)]
+
             c1, c2, c3 = st.columns(3)
             c1.metric("🏛️ Tamil Nadu", len(tn_df))
             c2.metric("🇮🇳 Central", len(central_df))
@@ -170,16 +169,16 @@ with tab1:
             view_mode = st.radio("View as", ["Cards", "Table"], horizontal=True)
 
             if view_mode == "Table":
-                show_cols = ['scholarship_name', 'level', 'category', 'gender', 'education_level', 'income_limit', 'amount', 'website']
+                show_cols = ['scholarship_name', 'level', 'category', 'gender', 'income_limit', 'amount', 'provider']
                 show_cols = [c for c in show_cols if c in eligible_df.columns]
                 st.dataframe(
                     eligible_df[show_cols].rename(columns={
                         'scholarship_name': 'Scholarship Name',
-                        'education_level': 'Education Level',
                         'income_limit': 'Income Limit'
                     }).reset_index(drop=True),
                     use_container_width=True
                 )
+
             else:
                 st.markdown("### 🟢 Tamil Nadu Scholarships")
                 if not tn_df.empty:
@@ -188,20 +187,21 @@ with tab1:
                         prov = r.get('provider', '')
                         cat = r.get('category', '')
                         gen = r.get('gender', '')
-                        edu = r.get('education_level', '')
+                        edu = r.get('level', '')
                         inc = r.get('income_limit', '')
                         amt = r.get('amount', '')
-                        web = r.get('website', '').strip()
-                        if web and web.lower() and not web.lower().startswith("http"):
+                        web = r.get('official_website', '') or r.get('application_link', '')
+                        if web and not web.lower().startswith("http"):
                             web = "https://" + web
+
                         st.markdown(f"""
                             <div style='background:linear-gradient(90deg,#f0fff4,#e6f7ff);padding:12px;border-radius:10px;margin-bottom:10px;'>
                               <div style='display:flex;justify-content:space-between;align-items:center;'>
                                 <div style='max-width:78%;'>
                                   <h4 style='margin:0;color:#0a58ca'>{name}</h4>
                                   <small style='color:#333'>{prov}</small>
-                                  <p style='margin:6px 0 0 0;'><b>Category:</b> {cat} &nbsp; | &nbsp; <b>Gender:</b> {gen} &nbsp; | &nbsp; <b>Edu:</b> {edu}</p>
-                                  <p style='margin:6px 0 0 0;'><b>Income Limit:</b> {inc} &nbsp; | &nbsp; <b>Amount:</b> {amt}</p>
+                                  <p style='margin:6px 0 0 0;'><b>Category:</b> {cat} | <b>Gender:</b> {gen} | <b>Edu:</b> {edu}</p>
+                                  <p style='margin:6px 0 0 0;'><b>Income Limit:</b> {inc} | <b>Amount:</b> {amt}</p>
                                 </div>
                                 <div style='text-align:right;'>
                                   <a href="{web}" target="_blank" style='background:#198754;color:white;padding:7px 12px;border-radius:8px;text-decoration:none;'>Apply</a>
@@ -219,20 +219,21 @@ with tab1:
                         prov = r.get('provider', '')
                         cat = r.get('category', '')
                         gen = r.get('gender', '')
-                        edu = r.get('education_level', '')
+                        edu = r.get('level', '')
                         inc = r.get('income_limit', '')
                         amt = r.get('amount', '')
-                        web = r.get('website', '').strip()
-                        if web and web.lower() and not web.lower().startswith("http"):
+                        web = r.get('official_website', '') or r.get('application_link', '')
+                        if web and not web.lower().startswith("http"):
                             web = "https://" + web
+
                         st.markdown(f"""
                             <div style='background:linear-gradient(90deg,#fff8f0,#f3f0ff);padding:12px;border-radius:10px;margin-bottom:10px;'>
                               <div style='display:flex;justify-content:space-between;align-items:center;'>
                                 <div style='max-width:78%;'>
                                   <h4 style='margin:0;color:#7b1fa2'>{name}</h4>
                                   <small style='color:#333'>{prov}</small>
-                                  <p style='margin:6px 0 0 0;'><b>Category:</b> {cat} &nbsp; | &nbsp; <b>Gender:</b> {gen} &nbsp; | &nbsp; <b>Edu:</b> {edu}</p>
-                                  <p style='margin:6px 0 0 0;'><b>Income Limit:</b> {inc} &nbsp; | &nbsp; <b>Amount:</b> {amt}</p>
+                                  <p style='margin:6px 0 0 0;'><b>Category:</b> {cat} | <b>Gender:</b> {gen} | <b>Edu:</b> {edu}</p>
+                                  <p style='margin:6px 0 0 0;'><b>Income Limit:</b> {inc} | <b>Amount:</b> {amt}</p>
                                 </div>
                                 <div style='text-align:right;'>
                                   <a href="{web}" target="_blank" style='background:#0d6efd;color:white;padding:7px 12px;border-radius:8px;text-decoration:none;'>Apply</a>
@@ -284,5 +285,6 @@ with tab3:
     income_df = sch_df.dropna(subset=['income_limit_numeric'])
     fig3 = px.histogram(income_df, x='income_limit_numeric', nbins=15, title="Income Limit Histogram")
     st.plotly_chart(fig3, use_container_width=True)
+
 
 
