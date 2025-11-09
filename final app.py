@@ -32,6 +32,11 @@ st.markdown(
     [data-testid="stAppViewContainer"] {
         background-color: #f4f8fb;  /* Soft light blue */
     }
+    .card {
+        background-color: #d1e7dd;
+        padding: 12px;
+        border-radius: 8px;
+    }
     </style>
     """,
     unsafe_allow_html=True
@@ -52,8 +57,8 @@ st.markdown("---")
 # ---------------- Helpers: robust column detection ----------------
 def detect_and_rename_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Attempt to map common column name variants to a standard set used by the app.
-    If a column is missing, an empty column is created so downstream code doesn't fail.
+    Map likely column names in uploaded CSV to standard columns used in the app.
+    If a column is missing, create an empty column to avoid KeyErrors later.
     """
     orig_cols = list(df.columns)
     colmap = {c: c.lower().strip().replace(" ", "_") for c in orig_cols}
@@ -67,11 +72,11 @@ def detect_and_rename_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     mapping = {}
     mapping['scholarship_name'] = find_col("scholarship", "name", "title")
-    mapping['level'] = find_col("level", "type", "scheme", "provider_type")
+    mapping['level'] = find_col("level", "type", "scheme", "provider", "scholarship_type")
     mapping['category'] = find_col("category", "community", "caste")
     mapping['gender'] = find_col("gender", "sex")
-    mapping['education_level'] = find_col("education", "eligible_classes", "eligible")
-    mapping['income_limit'] = find_col("income_limit", "income", "income_limit", "income_limit_numeric")
+    mapping['education_level'] = find_col("education", "eligible_classes", "eligible", "education_level")
+    mapping['income_limit'] = find_col("income_limit", "income", "income_limit")
     mapping['amount'] = find_col("amount", "scholarship_amount", "value")
     mapping['website'] = find_col("website", "link", "url", "application_link", "official_website")
     mapping['description'] = find_col("description", "details", "note")
@@ -98,35 +103,22 @@ def detect_and_rename_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
     for c in df.select_dtypes(include=['object']).columns:
         df[c] = df[c].astype(str).str.strip()
 
-    # Try to create numeric income/amount columns safely
+    # Create numeric income & amount columns safely
     if 'income_limit_numeric' not in df.columns:
         try:
-            if df['income_limit'].notna().any():
-                df['income_limit_numeric'] = df['income_limit'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
-            else:
-                df['income_limit_numeric'] = np.nan
+            df['income_limit_numeric'] = df['income_limit'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
         except Exception:
             df['income_limit_numeric'] = np.nan
     else:
-        # if it exists already, ensure numeric
-        try:
-            df['income_limit_numeric'] = pd.to_numeric(df['income_limit_numeric'], errors='coerce')
-        except Exception:
-            df['income_limit_numeric'] = np.nan
+        df['income_limit_numeric'] = pd.to_numeric(df['income_limit_numeric'], errors='coerce')
 
     if 'amount_numeric' not in df.columns:
         try:
-            if df['amount'].notna().any():
-                df['amount_numeric'] = df['amount'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
-            else:
-                df['amount_numeric'] = np.nan
+            df['amount_numeric'] = df['amount'].astype(str).str.replace(r'[^\d.]','',regex=True).replace('', np.nan).astype(float)
         except Exception:
             df['amount_numeric'] = np.nan
     else:
-        try:
-            df['amount_numeric'] = pd.to_numeric(df['amount_numeric'], errors='coerce')
-        except Exception:
-            df['amount_numeric'] = np.nan
+        df['amount_numeric'] = pd.to_numeric(df['amount_numeric'], errors='coerce')
 
     return df
 
@@ -150,6 +142,101 @@ def load_scholarship_df(path="Curated_Scholarships_India_TN_200.csv"):
 
 sch_df = load_scholarship_df()
 
+# ---------------- Normalization helpers (NEW) ----------------
+def normalize_scholarship_columns(df: pd.DataFrame) -> pd.DataFrame:
+    # Gender normalization -> gender_norm
+    def map_gender(g):
+        g = str(g).strip().lower()
+        if g == "" or g in ["all","any","both"]:
+            return "All"
+        if "trans" in g:
+            return "Transgender"
+        if "female" in g:
+            return "Female"
+        if "male" in g:
+            return "Male"
+        # fallback: if mentions women/female terms
+        if "woman" in g:
+            return "Female"
+        return "All"
+    df['gender_norm'] = df['gender'].apply(map_gender)
+
+    # Category normalization -> category_tags (set stored as list)
+    def extract_category_tags(cat):
+        s = str(cat).lower()
+        tags = set()
+        if any(x in s for x in ['sc', 'scheduled_caste']):
+            tags.add('sc')
+        if any(x in s for x in ['st', 'scheduled_tribe']):
+            tags.add('st')
+        if 'mbc' in s:
+            tags.add('mbc')
+        if 'obc' in s:
+            tags.add('obc')
+        if 'bc' in s and 'obc' not in s:  # prefer obc if spelled obc
+            tags.add('bc')
+        if 'general' in s or 'open' in s or 'all' in s:
+            tags.add('general')
+        if 'minority' in s:
+            tags.add('minority')
+        # if nothing matched, include the raw token as fallback
+        if not tags and s.strip():
+            # split by comma/semicolon/pipe and add tokens
+            parts = [p.strip() for p in s.replace(';',',').split(',') if p.strip()]
+            for p in parts:
+                tags.add(p)
+        return tags
+    df['category_tags'] = df['category'].apply(extract_category_tags)
+
+    # Education normalization -> edu_tags
+    def extract_edu_tags(ed):
+        s = str(ed).lower()
+        tags = set()
+        if any(x in s for x in ['ug/pg','ug/pg','ugpg','ug - pg']):
+            tags.add('ug/pg')
+        if 'ug' in s and 'pg' not in s:
+            tags.add('ug')
+        if 'pg' in s and 'ug' not in s:
+            tags.add('pg')
+        if 'school' in s or 'higher secondary' in s or 'hsc' in s:
+            tags.add('school')
+        if 'phd' in s or 'doctor' in s:
+            tags.add('phd')
+        if 'all' in s or s.strip()=='':
+            tags.add('all')
+        # fallback: check combined tags like "ug/pg"
+        if 'ug' in s and 'pg' in s:
+            tags.add('ug/pg')
+        # normalization for common abbreviations
+        if 'undergrad' in s or 'under graduate' in s:
+            tags.add('ug')
+        if 'postgrad' in s or 'post graduate' in s:
+            tags.add('pg')
+        return tags
+    df['edu_tags'] = df['education_level'].apply(extract_edu_tags)
+
+    # Level normalization -> provider_type (Tamil Nadu vs Central)
+    def map_level(lv):
+        s = str(lv).lower()
+        if any(x in s for x in ['tamil nadu','tn','state']):
+            return 'Tamil Nadu'
+        if any(x in s for x in ['central','national','govt of india','gov. of india']):
+            return 'Central'
+        # fallback to provider column if present
+        p = str(df.get('provider','')).lower()
+        if any(x in p for x in ['central','national']):
+            return 'Central'
+        if any(x in p for x in ['tamil','tn','state']):
+            return 'Tamil Nadu'
+        # else use raw value capitalized
+        return str(lv).strip() if str(lv).strip() else 'Other'
+    df['provider_type'] = df['level'].apply(map_level)
+
+    return df
+
+# apply normalization once
+sch_df = normalize_scholarship_columns(sch_df)
+
 # ---------------- Load reach dataset ----------------
 @st.cache_data
 def load_reach_df(path="TN_Scholarship_Reach_REALISTIC.csv"):
@@ -164,7 +251,6 @@ def load_reach_df(path="TN_Scholarship_Reach_REALISTIC.csv"):
         df['awareness_index'] = (df['literacy_rate'] * df['schools_with_internet_percent'])/100
     # Ensure district column exists (if different name, try to find alternatives)
     if 'district' not in df.columns:
-        # try to locate a district-like column
         for alt in ['district_name','dist','region','area']:
             if alt in df.columns:
                 df = df.rename(columns={alt:'district'})
@@ -220,14 +306,14 @@ for w in load_warnings:
 # ---------------- UI tabs ----------------
 tab1, tab2, tab3 = st.tabs(["🏆 Eligibility Finder","📊 Reach Predictor","📈 Data Dashboard"])
 
-# ---------------- TAB 1: Eligibility Finder (simplified filters) ----------------
+# ---------------- TAB 1: Eligibility Finder (fixed logic) ----------------
 with tab1:
     st.header("🎯 Scholarship Eligibility Finder")
     st.markdown("Enter your details to find eligible scholarships. Results displayed as clickable cards (Tamil Nadu / Central).")
 
     # ----- Simplified fixed filter options (basic lists) -----
-    genders = ["All", "Male", "Female"]
-    categories = ["All", "SC", "ST", "OBC", "General"]
+    genders = ["All", "Male", "Female", "Transgender"]
+    categories = ["All", "SC", "ST", "MBC", "BC", "OBC", "General", "Minority"]
     edulevels = ["All", "School", "Undergraduate", "Postgraduate", "PhD"]
 
     col1, col2, col3 = st.columns(3)
@@ -240,27 +326,83 @@ with tab1:
     with col3:
         search_term = st.text_input("Search scholarship name or keyword", "")
 
-    # filtering function (uses standardized columns)
+    # filtering function (uses standardized columns and tags)
     def filter_eligible(df):
         df2 = df.copy()
-        # income
+
+        # Income: keep rows where income limit is NaN OR student's income <= limit
         if 'income_limit_numeric' in df2.columns:
             df2 = df2[(df2['income_limit_numeric'].isna()) | (input_income <= df2['income_limit_numeric'])]
-        # gender
-        if input_gender and input_gender != "All":
-            df2 = df2[df2['gender'].str.contains(input_gender, case=False, na=False)]
-        # category
-        if input_category and input_category != "All":
-            df2 = df2[df2['category'].str.contains(input_category, case=False, na=False)]
-        # education
-        if input_edu and input_edu != "All":
-            df2 = df2[df2['education_level'].str.contains(input_edu, case=False, na=False)]
-        # search term
+
+        # Gender logic:
+        # - If Male selected -> show all scholarships except those that are Female-only.
+        # - If Female selected -> show Female OR All.
+        # - If Transgender selected -> show Transgender OR All.
+        # - If All -> no gender filter.
+        if input_gender != "All":
+            if input_gender == "Male":
+                # exclude female-only rows
+                df2 = df2[~df2['gender_norm'].eq('Female')]
+            elif input_gender == "Female":
+                df2 = df2[df2['gender_norm'].isin(['Female','All'])]
+            elif input_gender == "Transgender":
+                df2 = df2[df2['gender_norm'].isin(['Transgender','All'])]
+
+        # Category logic:
+        # We use category_tags (set). For SC/ST selection we also include 'minority' tags as requested.
+        if input_category != "All":
+            sel = input_category.lower()
+            def category_matches(tags):
+                # tags is a set
+                if not isinstance(tags, (set, list)):
+                    return False
+                t = set([str(x).lower() for x in tags])
+                if sel == 'sc':
+                    return ('sc' in t) or ('minority' in t)
+                if sel == 'st':
+                    return ('st' in t) or ('minority' in t)
+                if sel == 'mbc':
+                    return 'mbc' in t
+                if sel == 'bc':
+                    return 'bc' in t
+                if sel == 'obc':
+                    return 'obc' in t
+                if sel == 'general':
+                    return 'general' in t
+                if sel == 'minority':
+                    return 'minority' in t
+                # fallback: direct substring match
+                return any(sel in x for x in t)
+            df2 = df2[df2['category_tags'].apply(category_matches)]
+
+        # Education logic:
+        # - Undergraduate -> include 'ug' or 'ug/pg'
+        # - Postgraduate -> include 'pg' or 'ug/pg'
+        # - School -> 'school'
+        if input_edu != "All":
+            sel = input_edu.lower()
+            def edu_matches(tags):
+                if not isinstance(tags, (set, list)):
+                    return False
+                t = set([str(x).lower() for x in tags])
+                if sel == 'undergraduate':
+                    return ('ug' in t) or ('ug/pg' in t) or ('all' in t)
+                if sel == 'postgraduate':
+                    return ('pg' in t) or ('ug/pg' in t) or ('all' in t)
+                if sel == 'school':
+                    return ('school' in t) or ('all' in t)
+                if sel == 'phd':
+                    return ('phd' in t) or ('all' in t)
+                return False
+            df2 = df2[df2['edu_tags'].apply(edu_matches)]
+
+        # Search term
         if search_term:
             df2 = df2[
                 df2['scholarship_name'].str.contains(search_term, case=False, na=False) |
                 df2['description'].str.contains(search_term, case=False, na=False)
             ]
+
         return df2
 
     if st.button("🔎 Find Eligible Scholarships"):
@@ -271,9 +413,9 @@ with tab1:
             st.warning("No scholarships matched your criteria. Try loosening filters.")
         else:
             st.success(f"Found {len(eligible_df)} scholarships.")
-            # counts
-            tn_df = eligible_df[eligible_df['level'].str.contains("state|tn|tamil", case=False, na=False)]
-            central_df = eligible_df[eligible_df['level'].str.contains("central|national", case=False, na=False)]
+            # counts by provider_type (Tamil Nadu vs Central)
+            tn_df = eligible_df[eligible_df['provider_type'].str.contains("Tamil Nadu", case=False, na=False)]
+            central_df = eligible_df[eligible_df['provider_type'].str.contains("Central", case=False, na=False)]
             c1, c2, c3 = st.columns(3)
             c1.metric("🏛️ Tamil Nadu", len(tn_df))
             c2.metric("🇮🇳 Central", len(central_df))
@@ -284,7 +426,6 @@ with tab1:
 
             if view_mode == "Table":
                 show_cols = ['scholarship_name','level','category','gender','education_level','income_limit','amount','website']
-                # ensure columns exist
                 show_cols = [c for c in show_cols if c in eligible_df.columns]
                 st.dataframe(eligible_df[show_cols].rename(columns={
                     'scholarship_name':'Scholarship Name','education_level':'Education Level','income_limit':'Income Limit'}).reset_index(drop=True), use_container_width=True)
@@ -352,7 +493,7 @@ with tab1:
                 else:
                     st.info("No Central scholarships found.")
 
-# ---------------- TAB 2: Reach Predictor (fixed features) ----------------
+# ---------------- TAB 2: Reach Predictor (unchanged) ----------------
 with tab2:
     st.header("📊 Scholarship Reach Predictor (District-level)")
 
@@ -442,12 +583,12 @@ with tab3:
 
     col1, col2, col3 = st.columns(3)
     with col1:
-        # level filter: use values present in dataset
-        level_options = sorted(df_vis['level'].dropna().unique()) if 'level' in df_vis.columns else ["All"]
+        # level filter: use provider_type (Tamil Nadu / Central / Other)
+        level_options = sorted(df_vis['provider_type'].dropna().unique()) if 'provider_type' in df_vis.columns else ["All"]
         level_filter = st.multiselect("Filter by Level", options=level_options, default=level_options)
-        cat_filter = st.multiselect("Filter by Category", options=["All", "SC", "ST", "OBC", "General"], default=["All"])
+        cat_filter = st.multiselect("Filter by Category", options=["All", "SC", "ST", "MBC", "BC", "OBC", "General", "Minority"], default=["All"])
     with col2:
-        gender_filter = st.multiselect("Filter by Gender", options=["All", "Male", "Female"], default=["All"])
+        gender_filter = st.multiselect("Filter by Gender", options=["All", "Male", "Female", "Transgender"], default=["All"])
         edu_filter = st.multiselect("Filter by Education Level", options=["All", "School", "Undergraduate", "Postgraduate", "PhD"], default=["All"])
     with col3:
         # income slider: use safe max
@@ -456,15 +597,82 @@ with tab3:
         show_top = st.slider("Top N categories (for bar chart)", min_value=3, max_value=30, value=10)
 
     # Apply filters step-by-step (respect "All" semantics)
-    if "All" not in cat_filter:
-        df_vis = df_vis[df_vis['category'].isin(cat_filter)]
-    if "All" not in gender_filter:
-        df_vis = df_vis[df_vis['gender'].isin(gender_filter)]
-    if "All" not in edu_filter:
-        df_vis = df_vis[df_vis['education_level'].isin(edu_filter)]
+    # Level filter
     if level_filter:
-        df_vis = df_vis[df_vis['level'].isin(level_filter)]
-    # income numeric filter (safely)
+        df_vis = df_vis[df_vis['provider_type'].isin(level_filter)]
+
+    # Category filter (complex uses category_tags)
+    if not ("All" in cat_filter):
+        # build set of selected lower tags
+        sel_tags = set([c.lower() for c in cat_filter])
+        def cat_filter_fn(tags):
+            if not isinstance(tags, (set, list)):
+                return False
+            t = set([str(x).lower() for x in tags])
+            # SC and ST should include minority entries as per requirement
+            for s in sel_tags:
+                if s == 'sc':
+                    if ('sc' in t) or ('minority' in t):
+                        return True
+                elif s == 'st':
+                    if ('st' in t) or ('minority' in t):
+                        return True
+                else:
+                    if s in t:
+                        return True
+            return False
+        df_vis = df_vis[df_vis['category_tags'].apply(cat_filter_fn)]
+
+    # Gender filter
+    if not ("All" in gender_filter):
+        # if user selected multiple genders, keep rows that match at least one selection
+        def gender_filter_fn(g):
+            if not isinstance(g, str):
+                return False
+            norm = g
+            # if 'Male' selected and row is not female-only include it
+            # we implement OR matching for multiple selections
+            keep = False
+            for sel in gender_filter:
+                if sel == 'Male':
+                    # include row unless it's female-only
+                    if norm != 'Female':
+                        keep = True
+                elif sel == 'Female':
+                    if norm in ('Female','All'):
+                        keep = True
+                elif sel == 'Transgender':
+                    if norm in ('Transgender','All'):
+                        keep = True
+                elif sel == 'All':
+                    keep = True
+            return keep
+        df_vis = df_vis[df_vis['gender_norm'].apply(gender_filter_fn)]
+
+    # Education filter
+    if not ("All" in edu_filter):
+        sel_edu = set([e.lower() for e in edu_filter])
+        def edu_filter_fn(tags):
+            if not isinstance(tags, (set, list)):
+                return False
+            t = set([str(x).lower() for x in tags])
+            for sel in sel_edu:
+                if sel == 'undergraduate':
+                    if ('ug' in t) or ('ug/pg' in t) or ('all' in t):
+                        return True
+                if sel == 'postgraduate':
+                    if ('pg' in t) or ('ug/pg' in t) or ('all' in t):
+                        return True
+                if sel == 'school':
+                    if ('school' in t) or ('all' in t):
+                        return True
+                if sel == 'phd':
+                    if ('phd' in t) or ('all' in t):
+                        return True
+            return False
+        df_vis = df_vis[df_vis['edu_tags'].apply(edu_filter_fn)]
+
+    # Income numeric filter (safely)
     if 'income_limit_numeric' in df_vis.columns:
         df_vis = df_vis[
             (df_vis['income_limit_numeric'].fillna(-1) >= income_range[0]) &
@@ -474,8 +682,8 @@ with tab3:
     st.subheader("Summary Metrics")
     t1, t2, t3 = st.columns(3)
     t1.metric("Total Scholarships", len(df_vis))
-    t2.metric("Tamil Nadu (approx)", len(df_vis[df_vis['level'].str.contains("state|tn|tamil", case=False, na=False)]) if 'level' in df_vis.columns else 0)
-    t3.metric("Central (approx)", len(df_vis[df_vis['level'].str.contains("central|national", case=False, na=False)]) if 'level' in df_vis.columns else 0)
+    t2.metric("Tamil Nadu (approx)", len(df_vis[df_vis['provider_type'].str.contains("Tamil Nadu", case=False, na=False)]) if 'provider_type' in df_vis.columns else 0)
+    t3.metric("Central (approx)", len(df_vis[df_vis['provider_type'].str.contains("Central", case=False, na=False)]) if 'provider_type' in df_vis.columns else 0)
 
     st.markdown("---")
     # charts
@@ -487,8 +695,8 @@ with tab3:
         st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("Pie — Level distribution")
-        if 'level' in df_vis.columns:
-            lvl = df_vis['level'].value_counts().reset_index()
+        if 'provider_type' in df_vis.columns:
+            lvl = df_vis['provider_type'].value_counts().reset_index()
             lvl.columns = ['Level','Count']
             fig2 = px.pie(lvl, values='Count', names='Level', title="Level distribution")
             st.plotly_chart(fig2, use_container_width=True)
