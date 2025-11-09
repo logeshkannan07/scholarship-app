@@ -495,84 +495,90 @@ with tab1:
 
 # ---------------- TAB 2: Reach Predictor (unchanged) ----------------
 with tab2:
-    st.header("📊 Scholarship Reach Predictor (District-level)")
+    st.header("📊 TN Scholarship Reach Predictor")
 
-    if reach_df.empty:
-        st.warning("Reach dataset TN_Scholarship_Reach_REALISTIC.csv not found or empty.")
-    else:
-        # ensure derived fields exist
-        if 'income_to_infra' not in reach_df.columns and 'avg_family_income' in reach_df.columns and 'school_infrastructure_index' in reach_df.columns:
-            reach_df['income_to_infra'] = reach_df['avg_family_income'] / reach_df['school_infrastructure_index'].replace(0,1)
-        if 'awareness_index' not in reach_df.columns and 'literacy_rate' in reach_df.columns and 'schools_with_internet_percent' in reach_df.columns:
-            reach_df['awareness_index'] = (reach_df['literacy_rate'] * reach_df['schools_with_internet_percent'])/100
+    @st.cache_data
+    def load_data():
+        df = pd.read_csv("TN_Scholarship_Reach_REALISTIC.csv")
+        df["income_to_infra"] = df["avg_family_income"] / df["school_infrastructure_index"].replace(0, 1)
+        df["awareness_index"] = (df["literacy_rate"] * df["schools_with_internet_percent"]) / 100
+        return df
 
-        required_feats = [
-            "avg_family_income","literacy_rate","female_ratio","rural_population_percent",
-            "num_students","schools_with_computer_lab_percent","schools_with_internet_percent",
-            "school_infrastructure_index","income_to_infra","awareness_index"
-        ]
-        # check available features
-        available_feats = [f for f in required_feats if f in reach_df.columns]
-        missing = [f for f in required_feats if f not in reach_df.columns]
-        if missing:
-            st.warning(f"Some expected features are missing from reach dataset: {missing}. Prediction may fail or be less accurate.")
+    df = load_data()
 
-        # model selector
-        if models:
-            model_choice = st.selectbox("Choose model", list(models.keys()))
-        else:
-            st.error("No models loaded. Upload model .pkl files.")
-            st.stop()
+    feature_cols = [
+        "avg_family_income", "literacy_rate", "female_ratio", "rural_population_percent",
+        "num_students", "schools_with_computer_lab_percent", "schools_with_internet_percent",
+        "school_infrastructure_index", "income_to_infra", "awareness_index"
+    ]
 
-        # district safe selection
-        district_list = list(reach_df['district'].dropna().unique())
-        district = st.selectbox("Select District", district_list)
-        if district in reach_df['district'].values:
-            row = reach_df[reach_df["district"]==district].iloc[0]
-        else:
-            row = reach_df.iloc[0]
+    X = df[feature_cols]
+    y = df["scholarship_reach_percent"]
 
-        # populate inputs with district defaults
-        colA, colB = st.columns(2)
-        with colA:
-            avg_income = st.number_input("Average Family Income", value=float(row.get('avg_family_income',0)))
-            literacy = st.number_input("Literacy Rate (%)", value=float(row.get('literacy_rate',0)))
-            female_ratio = st.number_input("Female Ratio", value=float(row.get('female_ratio',0)))
-            rural_pct = st.number_input("Rural Population (%)", value=float(row.get('rural_population_percent',0)))
-            num_students = st.number_input("Number of Students", value=int(row.get('num_students',0)))
-        with colB:
-            comp_lab = st.number_input("Schools with Computer Lab (%)", value=float(row.get('schools_with_computer_lab_percent',0)))
-            internet_pct = st.number_input("Schools with Internet (%)", value=float(row.get('schools_with_internet_percent',0)))
-            infra_idx = st.number_input("School Infrastructure Index", value=float(row.get('school_infrastructure_index',0)))
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+    X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
-        # derived
-        income_to_infra = avg_income / (infra_idx if infra_idx!=0 else 1)
-        awareness_index = (literacy * internet_pct)/100
+    models = {
+        "Linear Regression": LinearRegression(),
+        "Random Forest": RandomForestRegressor(random_state=42),
+        "Gradient Boosting": GradientBoostingRegressor(random_state=42)
+    }
+    trained_models = {}
+    for name, m in models.items():
+        m.fit(X_train, y_train)
+        trained_models[name] = m
 
-        # build feature vector in exact order
-        feat_vector = [avg_income, literacy, female_ratio, rural_pct, num_students, comp_lab, internet_pct, infra_idx, income_to_infra, awareness_index]
-        X = np.array([feat_vector])
+    dummy_areas = {
+        "Chennai": ["Adyar", "T. Nagar", "Velachery"],
+        "Madurai": ["Simmakkal", "Alanganallur", "Thiruparankundram"],
+        "Coimbatore": ["RS Puram", "Peelamedu", "Gandhipuram"]
+    }
 
-        # scale if possible
-        if scaler is not None:
-            try:
-                Xs = scaler.transform(X)
-            except Exception as e:
-                st.warning(f"Scaler transform failed ({e}). Using raw features.")
-                Xs = X
-        else:
-            Xs = X
+    model_choice = st.selectbox("Choose Model", list(trained_models.keys()))
+    district = st.selectbox("Select District", df["district"].unique())
+    area = st.selectbox("Select Area / City", dummy_areas.get(district, ["Area 1", "Area 2"]))
+    st.write(f"Selected Area: **{area}, {district}**")
 
-        if st.button("🚀 Predict Reach"):
-            model = models.get(model_choice)
-            if model is None:
-                st.error("Selected model not loaded.")
-            else:
-                try:
-                    pred = model.predict(Xs)[0]
-                    st.success(f"🎯 Predicted Scholarship Reach in {district}: {pred:.2f}%")
-                except Exception as e:
-                    st.error(f"Prediction failed: {e}")
+    district_data = df[df["district"] == district].iloc[0]
+    avg_income = st.number_input("Average Family Income", value=float(district_data["avg_family_income"]))
+    literacy_rate = st.slider("Literacy Rate (%)", 0.0, 100.0, float(district_data["literacy_rate"]))
+    female_ratio = st.slider("Female Ratio", 800.0, 1100.0, float(district_data["female_ratio"]))
+    rural_percent = st.slider("Rural Population (%)", 0.0, 100.0, float(district_data["rural_population_percent"]))
+    num_students = st.number_input("Number of Students", value=int(district_data["num_students"]))
+    comp_lab_percent = st.slider("Schools with Computer Lab (%)", 0.0, 100.0, float(district_data["schools_with_computer_lab_percent"]))
+    internet_percent = st.slider("Schools with Internet (%)", 0.0, 100.0, float(district_data["schools_with_internet_percent"]))
+    infra_index = st.slider("School Infrastructure Index", 0.0, 100.0, float(district_data["school_infrastructure_index"]))
+
+    income_to_infra = avg_income / (infra_index if infra_index != 0 else 1)
+    awareness_index = (literacy_rate * internet_percent) / 100
+
+    if st.button("Predict Scholarship Reach"):
+        features_array = np.array([[avg_income, literacy_rate, female_ratio, rural_percent,
+                                    num_students, comp_lab_percent, internet_percent,
+                                    infra_index, income_to_infra, awareness_index]])
+        features_scaled = scaler.transform(features_array)
+        model = trained_models[model_choice]
+        pred = model.predict(features_scaled)[0]
+        pred = float(np.clip(pred, 0, 100))
+        st.success(f"🏆 Predicted Scholarship Reach: {pred:.2f}%")
+
+    if st.checkbox("Show Correlation Heatmap"):
+        st.subheader("Correlation Heatmap")
+        corr = df[feature_cols + ["scholarship_reach_percent"]].corr()
+        fig, ax = plt.subplots(figsize=(9,7))
+        sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
+        st.pyplot(fig)
+
+    if st.checkbox("Show Model Performance"):
+        res = []
+        for name, m in trained_models.items():
+            y_pred = m.predict(X_test)
+            rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+            r2 = r2_score(y_test, y_pred)
+            res.append({"Model": name, "RMSE": round(rmse,2), "R²": round(r2,2)})
+        st.subheader("Model Performance")
+        st.table(pd.DataFrame(res))
 
 # ---------------- TAB 3: Data Dashboard (full dataset + advanced filters) ----------------
 with tab3:
@@ -712,3 +718,4 @@ with tab3:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("**Developed by:** Logesh Kannan  ·  **Guide:** Dr. Rajkumar  · Anna University Regional Campus, Madurai")
+
