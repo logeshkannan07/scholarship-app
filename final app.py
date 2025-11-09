@@ -495,16 +495,16 @@ with tab1:
 
 # ---------------- TAB 2: Reach Predictor (unchanged) ----------------
 with tab2:
-    st.header("📊 TN Scholarship Reach Predictor")
+    st.title("🎯 TN Scholarship Reach Predictor")
 
     @st.cache_data
-    def load_data():
+    def load_reach_data():
         df = pd.read_csv("TN_Scholarship_Reach_REALISTIC.csv")
         df["income_to_infra"] = df["avg_family_income"] / df["school_infrastructure_index"].replace(0, 1)
         df["awareness_index"] = (df["literacy_rate"] * df["schools_with_internet_percent"]) / 100
         return df
 
-    df = load_data()
+    df2 = load_reach_data()
 
     feature_cols = [
         "avg_family_income", "literacy_rate", "female_ratio", "rural_population_percent",
@@ -512,8 +512,8 @@ with tab2:
         "school_infrastructure_index", "income_to_infra", "awareness_index"
     ]
 
-    X = df[feature_cols]
-    y = df["scholarship_reach_percent"]
+    X = df2[feature_cols]
+    y = df2["scholarship_reach_percent"]
 
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
@@ -524,10 +524,11 @@ with tab2:
         "Random Forest": RandomForestRegressor(random_state=42),
         "Gradient Boosting": GradientBoostingRegressor(random_state=42)
     }
+
     trained_models = {}
-    for name, m in models.items():
-        m.fit(X_train, y_train)
-        trained_models[name] = m
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        trained_models[name] = model
 
     dummy_areas = {
         "Chennai": ["Adyar", "T. Nagar", "Velachery"],
@@ -536,11 +537,11 @@ with tab2:
     }
 
     model_choice = st.selectbox("Choose Model", list(trained_models.keys()))
-    district = st.selectbox("Select District", df["district"].unique())
+    district = st.selectbox("Select District", df2["district"].unique())
     area = st.selectbox("Select Area / City", dummy_areas.get(district, ["Area 1", "Area 2"]))
     st.write(f"Selected Area: **{area}, {district}**")
 
-    district_data = df[df["district"] == district].iloc[0]
+    district_data = df2[df2["district"] == district].iloc[0]
     avg_income = st.number_input("Average Family Income", value=float(district_data["avg_family_income"]))
     literacy_rate = st.slider("Literacy Rate (%)", 0.0, 100.0, float(district_data["literacy_rate"]))
     female_ratio = st.slider("Female Ratio", 800.0, 1100.0, float(district_data["female_ratio"]))
@@ -565,7 +566,7 @@ with tab2:
 
     if st.checkbox("Show Correlation Heatmap"):
         st.subheader("Correlation Heatmap")
-        corr = df[feature_cols + ["scholarship_reach_percent"]].corr()
+        corr = df2[feature_cols + ["scholarship_reach_percent"]].corr()
         fig, ax = plt.subplots(figsize=(9,7))
         sns.heatmap(corr, annot=True, cmap="coolwarm", ax=ax)
         st.pyplot(fig)
@@ -718,4 +719,5 @@ with tab3:
 # ---------------- Footer ----------------
 st.markdown("---")
 st.markdown("**Developed by:** Logesh Kannan  ·  **Guide:** Dr. Rajkumar  · Anna University Regional Campus, Madurai")
+
 
