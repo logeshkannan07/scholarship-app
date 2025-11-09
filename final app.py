@@ -244,6 +244,7 @@ with tab1:
                     st.info("No Central scholarships found.")
 
 
+
 # -------------------- TAB 2: REACH PREDICTOR --------------------
 with tab2:
     st.header("📈 Scholarship Reach Predictor")
@@ -283,4 +284,5 @@ with tab3:
     income_df = sch_df.dropna(subset=['income_limit_numeric'])
     fig3 = px.histogram(income_df, x='income_limit_numeric', nbins=15, title="Income Limit Histogram")
     st.plotly_chart(fig3, use_container_width=True)
+
 
