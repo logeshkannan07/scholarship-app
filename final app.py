@@ -27,6 +27,12 @@ def load_dataset():
     # Normalize column names
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
 
+    # Rename to match logic used in filters
+    df.rename(columns={
+        "level": "education_level",
+        "official_website": "website"
+    }, inplace=True)
+
     # Add helper columns
     if 'income_limit' in df.columns:
         df['income_limit_numeric'] = (
@@ -38,14 +44,16 @@ def load_dataset():
         )
 
     df['gender_norm'] = df['gender'].fillna('All').str.strip().str.title()
-    df['provider_type'] = df['provider'].fillna('').apply(lambda x: "Tamil Nadu" if "tamil" in x.lower() else ("Central" if "central" in x.lower() else "Other"))
+    df['provider_type'] = df['provider'].fillna('').apply(
+        lambda x: "Tamil Nadu" if "tamil" in x.lower()
+        else ("Central" if "central" in x.lower() else "Other")
+    )
 
     # Category & Education sets
     df['category_tags'] = df['category'].astype(str).str.lower().str.split(r'[,/ ]+')
     df['edu_tags'] = df['education_level'].astype(str).str.lower().str.split(r'[,/ ]+')
-    return df
 
-sch_df = load_dataset()
+    return df
 
 # -------------------- LOAD MODELS --------------------
 @st.cache_resource
@@ -285,6 +293,7 @@ with tab3:
     income_df = sch_df.dropna(subset=['income_limit_numeric'])
     fig3 = px.histogram(income_df, x='income_limit_numeric', nbins=15, title="Income Limit Histogram")
     st.plotly_chart(fig3, use_container_width=True)
+
 
 
 
